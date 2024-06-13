@@ -23,7 +23,7 @@ class G7SettingsViewModel: ObservableObject {
     @Published private(set) var activatedAt: Date?
     @Published private(set) var lastConnect: Date?
     @Published private(set) var latestReadingTimestamp: Date?
-    @Published var uploadReadings: Bool = false {
+    @Published var uploadReadings: Bool = true {
         didSet {
             cgmManager.uploadReadings = uploadReadings
         }
