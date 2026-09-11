@@ -2232,7 +2232,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Einde Verlenging"
+            "value" : "Einde verlenging"
           }
         },
         "pl" : {
@@ -2603,6 +2603,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "高"
+          }
+        }
+      }
+    },
+    "Key" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key"
           }
         }
       }
@@ -3762,7 +3773,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zoekt naar\nSensor"
+            "value" : "Zoekt naar\nsensor"
           }
         },
         "pl" : {
@@ -4060,7 +4071,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sensor\nVerlopen"
+            "value" : "Sensor\nverlopen"
           }
         },
         "pl" : {
@@ -4209,7 +4220,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sensor\nMislukt"
+            "value" : "Sensor\nmislukt"
           }
         },
         "pl" : {
@@ -4662,7 +4673,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sensor Vervaldatum "
+            "value" : "Sensor vervaldatum "
           }
         },
         "pl" : {
@@ -5902,7 +5913,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Upload Metingen"
+            "value" : "Upload metingen"
           }
         },
         "pl" : {
