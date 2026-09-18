@@ -22,10 +22,6 @@ public protocol G7StateObserver: AnyObject {
 public class G7CGMManager: CGMManager {
     public var inSignalLoss: Bool = false
     
-    public var isInoperable: Bool {
-        cgmManagerStatus.isInoperable
-    }
-    
     private let log = OSLog(category: "G7CGMManager")
 
     /// How long to wait for communication to resume after a suspected session end
@@ -397,12 +393,14 @@ public class G7CGMManager: CGMManager {
         return lines.joined(separator: "\n")
     }
 
-    public func acknowledgeAlert(alertIdentifier: Alert.AlertIdentifier) async throws { }
+    public func acknowledgeAlert(alertIdentifier _: Alert.AlertIdentifier, completion: @escaping (Error?) -> Void) {
+        completion(nil)
+    }
 
     public func getSoundBaseURL() -> URL? { return nil }
     public func getSounds() -> [Alert.Sound] { return [] }
 
-    public let pluginIdentifier: String = "G7CGMManager"
+    public static let pluginIdentifier: String = "G7CGMManager"
 
     /// The model of the sensor in use, once one is known. G7 until then; the
     /// three models share one plugin and one protocol.
@@ -944,8 +942,8 @@ extension G7CGMManager: G7SensorDelegate {
             return
         }
 
-        let unit = LoopUnit.milligramsPerDeciliter
-        let quantity = LoopQuantity(unit: unit, doubleValue: Double(min(max(glucose, GlucoseLimits.minimum), GlucoseLimits.maximum)))
+        let unit = HKUnit.milligramsPerDeciliter
+        let quantity = HKQuantity(unit: unit, doubleValue: Double(min(max(glucose, GlucoseLimits.minimum), GlucoseLimits.maximum)))
 
         updateDelegate(with: .newData([
             NewGlucoseSample(
@@ -997,7 +995,7 @@ extension G7CGMManager: G7SensorDelegate {
             }
         }
 
-        let unit = LoopUnit.milligramsPerDeciliter
+        let unit = HKUnit.milligramsPerDeciliter
 
         let samples = backfill.compactMap { entry -> NewGlucoseSample? in
             guard let glucose = entry.glucose else {
@@ -1009,7 +1007,7 @@ extension G7CGMManager: G7SensorDelegate {
                 return nil
             }
 
-            let quantity = LoopQuantity(unit: unit, doubleValue: Double(min(max(glucose, GlucoseLimits.minimum), GlucoseLimits.maximum)))
+            let quantity = HKQuantity(unit: unit, doubleValue: Double(min(max(glucose, GlucoseLimits.minimum), GlucoseLimits.maximum)))
 
             return NewGlucoseSample(
                 date: activationDate.addingTimeInterval(TimeInterval(entry.timestamp)),
@@ -1035,11 +1033,11 @@ extension G7CGMManager: G7SensorDelegate {
 }
 
 extension G7BackfillMessage {
-    public var trendRate: LoopQuantity? {
+    public var trendRate: HKQuantity? {
         guard let trend = trend else {
             return nil
         }
-        return LoopQuantity(unit: .milligramsPerDeciliterPerMinute, doubleValue: trend)
+        return HKQuantity(unit: .milligramsPerDeciliterPerMinute, doubleValue: trend)
     }
 }
 
@@ -1048,18 +1046,18 @@ extension G7GlucoseMessage: GlucoseDisplayable {
         return hasReliableGlucose
     }
 
-    public var trendRate: LoopQuantity? {
+    public var trendRate: HKQuantity? {
         guard let trend = trend else {
             return nil
         }
-        return LoopQuantity(unit: .milligramsPerDeciliterPerMinute, doubleValue: trend)
+        return HKQuantity(unit: .milligramsPerDeciliterPerMinute, doubleValue: trend)
     }
 
-    public var glucoseQuantity: LoopQuantity? {
+    public var glucoseQuantity: HKQuantity? {
         guard let glucose = glucose else {
             return nil
         }
-        return LoopQuantity(unit: .milligramsPerDeciliter, doubleValue: Double(glucose))
+        return HKQuantity(unit: .milligramsPerDeciliter, doubleValue: Double(glucose))
     }
 
     public var isLocal: Bool {

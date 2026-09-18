@@ -82,6 +82,7 @@
 		C17F513C291EB13D00555EB5 /* Locked.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F513B291EB13D00555EB5 /* Locked.swift */; };
 		C17F513E291EB1A500555EB5 /* BluetoothServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F513D291EB1A500555EB5 /* BluetoothServices.swift */; };
 		C17F5140291EB27D00555EB5 /* TimeInterval.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F513F291EB27D00555EB5 /* TimeInterval.swift */; };
+		C17F514B291EB6F000555EB5 /* HKUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F514A291EB6F000555EB5 /* HKUnit.swift */; };
 		C17F5143291EB36700555EB5 /* AuthChallengeRxMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F5142291EB36700555EB5 /* AuthChallengeRxMessage.swift */; };
 		C17F5145291EB45900555EB5 /* CBPeripheral.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F5144291EB45900555EB5 /* CBPeripheral.swift */; };
 		C17F5147291EB57700555EB5 /* SensorMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F5146291EB57700555EB5 /* SensorMessage.swift */; };
@@ -90,6 +91,7 @@
 		C17F514F291EB87600555EB5 /* G7SensorKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C17F50C6291EAC3800555EB5 /* G7SensorKit.framework */; };
 		C17F5156291EBD8600555EB5 /* Image.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F5155291EBD8600555EB5 /* Image.swift */; };
 		C17F5157291EBD9900555EB5 /* TimeInterval.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F513F291EB27D00555EB5 /* TimeInterval.swift */; };
+		C139829829295D7D0047DB5F /* HKUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F514A291EB6F000555EB5 /* HKUnit.swift */; };
 		C19C9F4E29C91C4C00A6D3D0 /* LocalizedString.swift in Sources */ = {isa = PBXBuildFile; fileRef = C19C9F4D29C91C4C00A6D3D0 /* LocalizedString.swift */; };
 		C1D0C0DE2F0700010000CAFE /* G7CGMManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1D0C0DE2F0700020000CAFE /* G7CGMManagerTests.swift */; };
 		C1E71720292D84FE00DA646F /* G7ProgressBarState.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E7171F292D84FE00DA646F /* G7ProgressBarState.swift */; };
@@ -233,6 +235,7 @@
 		C17F513B291EB13D00555EB5 /* Locked.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Locked.swift; sourceTree = "<group>"; };
 		C17F513D291EB1A500555EB5 /* BluetoothServices.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BluetoothServices.swift; sourceTree = "<group>"; };
 		C17F513F291EB27D00555EB5 /* TimeInterval.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TimeInterval.swift; sourceTree = "<group>"; };
+		C17F514A291EB6F000555EB5 /* HKUnit.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = HKUnit.swift; sourceTree = "<group>"; };
 		C17F5142291EB36700555EB5 /* AuthChallengeRxMessage.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AuthChallengeRxMessage.swift; sourceTree = "<group>"; };
 		C17F5144291EB45900555EB5 /* CBPeripheral.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = CBPeripheral.swift; sourceTree = "<group>"; };
 		C17F5146291EB57700555EB5 /* SensorMessage.swift */ = {isa = PBXFileReference; explicitFileType = sourcecode.swift; fileEncoding = 4; path = SensorMessage.swift; sourceTree = "<group>"; };
@@ -471,6 +474,7 @@
 				C17F5148291EB6B600555EB5 /* LocalizedString.swift */,
 				C17F513B291EB13D00555EB5 /* Locked.swift */,
 				C17F513F291EB27D00555EB5 /* TimeInterval.swift */,
+				C17F514A291EB6F000555EB5 /* HKUnit.swift */,
 			);
 			path = Common;
 			sourceTree = "<group>";
@@ -756,6 +760,7 @@
 				C17F50E9291EAC6500555EB5 /* G7BackfillMessage.swift in Sources */,
 				C17F50ED291EAC6500555EB5 /* G7Opcode.swift in Sources */,
 				C17F5140291EB27D00555EB5 /* TimeInterval.swift in Sources */,
+				C17F514B291EB6F000555EB5 /* HKUnit.swift in Sources */,
 				C17F50F0291EAC6500555EB5 /* G7CGMManagerState.swift in Sources */,
 				C17F5145291EB45900555EB5 /* CBPeripheral.swift in Sources */,
 				C107607F2F059130008B2B39 /* ExtendedVersionMessage.swift in Sources */,
@@ -827,6 +832,7 @@
 				C17F5108291EAC9D00555EB5 /* G7SettingsView.swift in Sources */,
 				B60BB2E42BC649DA00D2BB39 /* Bundle.swift in Sources */,
 				C17F5157291EBD9900555EB5 /* TimeInterval.swift in Sources */,
+				C139829829295D7D0047DB5F /* HKUnit.swift in Sources */,
 				C19C9F4E29C91C4C00A6D3D0 /* LocalizedString.swift in Sources */,
 				C17F5156291EBD8600555EB5 /* Image.swift in Sources */,
 				C1409A07291EC21C006BE8D0 /* OSLog.swift in Sources */,

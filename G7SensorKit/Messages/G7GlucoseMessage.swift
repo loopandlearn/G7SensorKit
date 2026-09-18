@@ -64,7 +64,7 @@ public struct G7GlucoseMessage: SensorMessage, Equatable {
         }
     }
 
-    public var condition: GlucoseCondition? {
+    public var condition: LoopKit.GlucoseCondition? {
         guard let glucose = glucose else {
             return nil
         }

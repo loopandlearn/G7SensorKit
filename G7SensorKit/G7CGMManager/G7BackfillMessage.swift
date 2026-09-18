@@ -80,7 +80,7 @@ public struct G7BackfillMessage: Equatable {
         }
     }
 
-    public var condition: GlucoseCondition? {
+    public var condition: LoopKit.GlucoseCondition? {
         guard let glucose = glucose else {
             return nil
         }

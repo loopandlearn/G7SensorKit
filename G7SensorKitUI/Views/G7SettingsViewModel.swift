@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import HealthKit
 import G7SensorKit
 import LoopAlgorithm
 import LoopKit
@@ -152,7 +153,7 @@ class G7SettingsViewModel: ObservableObject {
         return lastReading.trend
     }
 
-    var glucoseUnit: LoopUnit {
+    var glucoseUnit: HKUnit {
         displayGlucosePreference.unit
     }
 
@@ -161,12 +162,12 @@ class G7SettingsViewModel: ObservableObject {
     }
 
     func formatGlucose(mgdl: Double, includeUnit: Bool = true) -> String {
-        displayGlucosePreference.format(LoopQuantity(unit: .milligramsPerDeciliter, doubleValue: mgdl), includeUnit: includeUnit)
+        displayGlucosePreference.format(HKQuantity(unit: .milligramsPerDeciliter, doubleValue: mgdl), includeUnit: includeUnit)
     }
 
     /// A value typed in the display unit, as mg/dL.
     func mgdl(fromDisplayValue value: Double) -> Double {
-        LoopQuantity(unit: displayGlucosePreference.unit, doubleValue: value).doubleValue(for: .milligramsPerDeciliter)
+        HKQuantity(unit: displayGlucosePreference.unit, doubleValue: value).doubleValue(for: .milligramsPerDeciliter)
     }
 
     func calibrate(mgdl: Double) {
