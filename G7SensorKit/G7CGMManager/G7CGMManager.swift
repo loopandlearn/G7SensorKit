@@ -550,19 +550,20 @@ extension G7CGMManager {
         default:
             logDeviceCommunication("Issuing alert \(alert.rawValue)", type: .connection)
         }
+        // Issued on the delegate queue like every other delegate call, and
+        // not inside a `Task`: LoopKit's `AlertIssuer` is synchronous, so the
+        // await bought nothing and the detached task cost the ordering. The
+        // deletion path depends on that ordering, since it has to retract
+        // everything before the host is told to let the manager go.
         delegate.notify { delegate in
-            Task {
-                await delegate?.issueAlert(loopAlert)
-            }
+            delegate?.issueAlert(loopAlert)
         }
     }
 
     private func retractLifecycleAlert(_ alert: G7LifecycleAlert) {
         let identifier = alert.identifier(managerIdentifier: pluginIdentifier)
         delegate.notify { delegate in
-            Task {
-                await delegate?.retractAlert(identifier: identifier)
-            }
+            delegate?.retractAlert(identifier: identifier)
         }
     }
 

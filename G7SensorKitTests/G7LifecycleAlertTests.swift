@@ -16,40 +16,61 @@ private class TestBluetoothManager: G7BluetoothManager {
     }
 }
 
-/// Records what the manager asks Loop to do with alerts. Main-actor bound,
-/// like the issuing calls themselves.
-@MainActor
+/// Records what the manager asks Loop to do with alerts.
+///
+/// Every call lands on the manager's `delegateQueue`, which these tests set to
+/// main, but the recording is locked rather than main-actor bound: a test
+/// double that traps when a manager calls it from the wrong queue would report
+/// a threading mistake as a crash in the middle of an unrelated assertion.
 private final class RecordingDelegate: CGMManagerDelegate {
-    var issued: [Alert] = []
-    var retracted: [Alert.Identifier] = []
+    private let lock = NSLock()
+    private var recordedIssued: [Alert] = []
+    private var recordedRetracted: [Alert.Identifier] = []
+    private var recordedEvents: [String] = []
+
+    var issued: [Alert] { lock.withLock { recordedIssued } }
+    var retracted: [Alert.Identifier] { lock.withLock { recordedRetracted } }
     /// Ordered record of what happened, for ordering assertions.
-    var events: [String] = []
+    var events: [String] { lock.withLock { recordedEvents } }
 
-    func issueAlert(_ alert: Alert) async {
-        issued.append(alert)
-        events.append("issue:" + alert.identifier.alertIdentifier)
+    func issueAlert(_ alert: Alert) {
+        lock.withLock {
+            recordedIssued.append(alert)
+            recordedEvents.append("issue:" + alert.identifier.alertIdentifier)
+        }
     }
 
-    func retractAlert(identifier: Alert.Identifier) async {
-        retracted.append(identifier)
-        events.append("retract:" + identifier.alertIdentifier)
+    func retractAlert(identifier: Alert.Identifier) {
+        lock.withLock {
+            recordedRetracted.append(identifier)
+            recordedEvents.append("retract:" + identifier.alertIdentifier)
+        }
     }
 
-    func cgmManagerWantsDeletion(_ manager: CGMManager) async {
-        events.append("delete")
+    func cgmManagerWantsDeletion(_ manager: CGMManager) {
+        lock.withLock { recordedEvents.append("delete") }
     }
 
-    nonisolated func doesIssuedAlertExist(identifier: Alert.Identifier) async throws -> Bool { false }
-    nonisolated func lookupAllUnretracted(managerIdentifier: String) async throws -> [PersistedAlert] { [] }
-    nonisolated func lookupAllUnacknowledgedUnretracted(managerIdentifier: String) async throws -> [PersistedAlert] { [] }
-    nonisolated func recordRetractedAlert(_ alert: Alert, at date: Date) async throws {}
-    nonisolated func deviceManager(_ manager: DeviceManager, logEventForDeviceIdentifier deviceIdentifier: String?, type: DeviceLogEntryType, message: String, completion: ((Error?) -> Void)?) {}
-    nonisolated func cgmManager(_ manager: CGMManager, didUpdate status: CGMManagerStatus) {}
-    nonisolated func startDateToFilterNewData(for manager: CGMManager) -> Date? { nil }
-    nonisolated func cgmManager(_ manager: CGMManager, hasNew readingResult: CGMReadingResult) {}
-    nonisolated func cgmManager(_ manager: CGMManager, hasNew events: [PersistedCgmEvent]) {}
-    nonisolated func cgmManagerDidUpdateState(_ manager: CGMManager) {}
-    nonisolated func credentialStoragePrefix(for manager: CGMManager) -> String { "test" }
+    func doesIssuedAlertExist(identifier: Alert.Identifier, completion: @escaping (Swift.Result<Bool, Error>) -> Void) {
+        completion(.success(false))
+    }
+
+    func lookupAllUnretracted(managerIdentifier: String, completion: @escaping (Swift.Result<[PersistedAlert], Error>) -> Void) {
+        completion(.success([]))
+    }
+
+    func lookupAllUnacknowledgedUnretracted(managerIdentifier: String, completion: @escaping (Swift.Result<[PersistedAlert], Error>) -> Void) {
+        completion(.success([]))
+    }
+
+    func recordRetractedAlert(_ alert: Alert, at date: Date) {}
+    func deviceManager(_ manager: DeviceManager, logEventForDeviceIdentifier deviceIdentifier: String?, type: DeviceLogEntryType, message: String, completion: ((Error?) -> Void)?) {}
+    func cgmManager(_ manager: CGMManager, didUpdate status: CGMManagerStatus) {}
+    func startDateToFilterNewData(for manager: CGMManager) -> Date? { nil }
+    func cgmManager(_ manager: CGMManager, hasNew readingResult: CGMReadingResult) {}
+    func cgmManager(_ manager: CGMManager, hasNew events: [PersistedCgmEvent]) {}
+    func cgmManagerDidUpdateState(_ manager: CGMManager) {}
+    func credentialStoragePrefix(for manager: CGMManager) -> String { "test" }
 }
 
 class G7LifecycleAlertScheduleTests: XCTestCase {
