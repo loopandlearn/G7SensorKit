@@ -59,6 +59,5 @@ struct G7PairingSuccessView: View {
             .padding([.horizontal, .bottom])
         }
         .navigationBarBackButtonHidden(true)
-        .navigationBarTitle(Text(LocalizedString("Paired", comment: "Navigation title of the pairing success screen")), displayMode: .inline)
     }
 }

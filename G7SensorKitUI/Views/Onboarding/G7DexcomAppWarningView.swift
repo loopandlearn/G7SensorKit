@@ -90,7 +90,6 @@ struct G7DexcomAppWarningView: View {
             }
             .padding([.horizontal, .bottom])
         }
-        .navigationBarTitle(Text(LocalizedString("Before You Pair", comment: "Navigation title of the Dexcom app warning screen")), displayMode: .inline)
         .onAppear { isInstalled = isDexcomAppInstalled() }
     }
 

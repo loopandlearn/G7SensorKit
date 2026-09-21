@@ -56,7 +56,6 @@ struct G7PairingView: View {
             buttons
                 .padding([.horizontal, .bottom])
         }
-        .navigationBarTitle(Text(LocalizedString("Pairing", comment: "Navigation title of the pairing progress screen")), displayMode: .inline)
         .navigationBarBackButtonHidden(viewModel.isWorking)
         .animation(.default, value: viewModel.candidates)
         .onAppear { viewModel.start() }

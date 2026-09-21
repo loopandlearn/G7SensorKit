@@ -151,7 +151,6 @@ struct G7EnterCodeView: View {
         } message: {
             Text(LocalizedString("Allow camera access in Settings to scan the code on the applicator, or type the 4 digits instead.", comment: "Message of the alert shown when camera permission is denied"))
         }
-        .navigationBarTitle(Text(LocalizedString("Pairing Code", comment: "Navigation title of the pairing code entry screen")), displayMode: .inline)
     }
 
     /// Typing the code stays available, one step down from scanning it.

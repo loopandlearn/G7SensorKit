@@ -86,7 +86,43 @@ class G7UICoordinator: UINavigationController, CGMManagerOnboarding, CompletionN
         !isPairingNewSensor && cgmManager?.sessionMode == .eavesdropping
     }
 
+    /// The navigation bar title for each pushed screen.
+    ///
+    /// Set on the controller rather than left to the SwiftUI views. A hosted
+    /// view's `navigationBarTitle` does reach its navigation item, but the bar
+    /// came up empty in the app anyway, and a title set here cannot be lost on
+    /// the way. Startup is deliberately untitled: it carries its own large
+    /// title in the content.
+    private func title(for screen: G7Screen) -> String? {
+        switch screen {
+        case .startup:
+            return nil
+        case .dexcomAppWarning:
+            return LocalizedString("Before You Pair", comment: "Navigation title of the Dexcom app warning screen")
+        case .applySensor:
+            return LocalizedString("New Sensor", comment: "Navigation title of the apply-sensor screen")
+        case .alertsFromLoop:
+            return LocalizedString("Alerts", comment: "Navigation title of the alerts hand-off page")
+        case .notificationPermissions:
+            return LocalizedString("Notifications", comment: "Navigation title of the notification permissions page")
+        case .enterCode:
+            return LocalizedString("Pairing Code", comment: "Navigation title of the pairing code entry screen")
+        case .pairing:
+            return LocalizedString("Pairing", comment: "Navigation title of the pairing progress screen")
+        case .pairingSuccess:
+            return LocalizedString("Paired", comment: "Navigation title of the pairing success screen")
+        case .settings:
+            return cgmManager?.localizedTitle
+        }
+    }
+
     private func viewController(for screen: G7Screen) -> UIViewController {
+        let controller = makeViewController(for: screen)
+        controller.title = title(for: screen)
+        return controller
+    }
+
+    private func makeViewController(for screen: G7Screen) -> UIViewController {
         switch screen {
         case .startup:
             let view = G7StartupView(
@@ -98,9 +134,7 @@ class G7UICoordinator: UINavigationController, CGMManagerOnboarding, CompletionN
                     }
                 }
             )
-            let controller = hostingController(view, largeTitle: false)
-            controller.title = nil
-            return controller
+            return hostingController(view, largeTitle: false)
 
         case .dexcomAppWarning:
             let view = G7DexcomAppWarningView(
