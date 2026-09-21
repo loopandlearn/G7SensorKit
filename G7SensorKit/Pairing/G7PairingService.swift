@@ -132,6 +132,10 @@ public final class G7PairingService {
     /// again, and written on main as the planner drops them.
     private let ruledOutIdentifiers = Locked<Set<UUID>>([])
 
+    /// Sensors the scanned serial has turned away, so each is only logged
+    /// once. Kept on the Bluetooth queue's side of the fence.
+    private let skippedBySerial = Locked<Set<UUID>>([])
+
     private var authenticationInFlight = false
     /// Bumped whenever an in-flight handshake is disowned, so its late
     /// completion is ignored.
@@ -207,6 +211,19 @@ public final class G7PairingService {
         code.count == 4 && code.allSatisfy(\.isNumber)
     }
 
+    /// Whether a scanned `serial` can narrow the scan.
+    ///
+    /// A sensor advertises a CRC16 of its serial's digits, never the serial
+    /// itself, so knowing the serial lets the run skip every sensor whose
+    /// advertisement cannot produce that CRC. A serial that is not plain
+    /// ASCII digits has no CRC to compare and narrows nothing, and the
+    /// screen must not claim a filter that is not running. Narrowing is all
+    /// it is: a CRC collision is possible, and an advertisement without
+    /// manufacturer data is kept either way, so the handshake still decides.
+    public static func canFilterBySerial(_ serial: String) -> Bool {
+        G7Advertisement.serialChecksum(for: serial) != nil
+    }
+
     /// Starts pairing with `pairingCode`. `serial` is the package serial when
     /// the code came from a scan; candidates that cannot have that serial
     /// are then skipped rather than tried.
@@ -279,6 +296,7 @@ public final class G7PairingService {
         releaseBluetoothManager()
         planner = G7PairingPlanner()
         ruledOutIdentifiers.value = []
+        skippedBySerial.value = []
         expectedSerial = nil
         excludedPeripheralIdentifier = nil
         setState(.idle)
@@ -606,7 +624,18 @@ extension G7PairingService: G7BluetoothManagerDelegate {
         }
 
         if let serial = expectedSerial, !advertisement.couldHaveSerial(serial) {
-            log.debug("Skipping %{public}@: not the scanned sensor", advertisement.name)
+            // Once per sensor, not once per advertisement: a sensor with a
+            // free slot advertises continuously, and the log is the only
+            // record of what the serial filter turned away.
+            var isFirstSighting = false
+            _ = skippedBySerial.mutate { skipped in
+                isFirstSighting = skipped.insert(peripheral.identifier).inserted
+            }
+            if isFirstSighting {
+                onMain { [weak self] in
+                    self?.report("Skipping \(advertisement.name): it cannot be the sensor with the scanned serial")
+                }
+            }
             return .ignore
         }
 

@@ -22,6 +22,10 @@ struct G7PairingView: View {
 
     @State private var rowHeight = CandidateRowHeight.defaultValue
 
+    private var isPulsing: Bool {
+        viewModel.isWorking && viewModel.bluetoothProblem == nil
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -67,10 +71,6 @@ struct G7PairingView: View {
         G7SensorHero(model: viewModel.displayModel, isPulsing: isPulsing, outcome: outcome)
     }
 
-    private var isPulsing: Bool {
-        viewModel.isWorking && viewModel.bluetoothProblem == nil
-    }
-
     private var outcome: G7SensorHero.Outcome? {
         switch viewModel.state {
         case .succeeded:
@@ -104,6 +104,13 @@ struct G7PairingView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else if let detail = viewModel.statusDetail {
                 Text(detail)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let note = viewModel.serialFilterNote {
+                Label(note, systemImage: "line.3.horizontal.decrease.circle")
+                    .font(.footnote)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

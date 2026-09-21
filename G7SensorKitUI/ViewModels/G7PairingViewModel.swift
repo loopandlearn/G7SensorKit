@@ -116,6 +116,46 @@ final class G7PairingViewModel: ObservableObject {
         candidates.first { $0.status == .paired }?.model ?? displayModel
     }
 
+    /// The serial the scan is narrowed to: the one from the scanned
+    /// applicator (or the one the session already knows, when re-pairing its
+    /// own sensor), and only when it can actually narrow anything.
+    var filteredSerial: String? {
+        guard let serial = serial, G7PairingService.canFilterBySerial(serial) else {
+            return nil
+        }
+        return serial
+    }
+
+    /// Says so on screen when the run is only looking for one sensor. A user
+    /// watching it pass over a sensor sitting right next to the phone should
+    /// be able to see why.
+    var serialFilterNote: String? {
+        guard let serial = filteredSerial, !isIdle, !isSucceeded else {
+            return nil
+        }
+        return String(
+            format: LocalizedString(
+                "Waiting for the sensor with serial %@, from the applicator you scanned. Sensors in range that cannot have that serial are skipped.",
+                comment: "Pairing note shown while the scan is narrowed to a scanned sensor's serial (1: serial number)"
+            ),
+            serial
+        )
+    }
+
+    private var isIdle: Bool {
+        if case .idle = state {
+            return true
+        }
+        return false
+    }
+
+    private var isSucceeded: Bool {
+        if case .succeeded = state {
+            return true
+        }
+        return false
+    }
+
     /// Why pairing cannot make progress right now, if the radio is the reason.
     var bluetoothProblem: String? {
         guard isWorking else { return nil }
