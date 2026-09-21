@@ -27,7 +27,7 @@ struct G7EnterCodeView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-            Text(LocalizedString("Enter the 4-digit pairing code printed on the sensor applicator.", comment: "Instructions on the pairing code entry screen when the applicator cannot be scanned"))
+            Text(LocalizedString("Enter the 4-digit pairing code printed on the sensor applicator.", comment: "Instructions on the screen where the pairing code is typed by hand"))
                 .fixedSize(horizontal: false, vertical: true)
                 .foregroundColor(.secondary)
 

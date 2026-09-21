@@ -15,10 +15,13 @@ import VisionKit
 struct G7PackageScannerView: UIViewControllerRepresentable {
     var didScan: (G7SensorPackage) -> Void
 
-    /// Whether scanning can be offered at all. Requires a device with a
-    /// camera and a host app that declares camera usage: asking for camera
-    /// access without `NSCameraUsageDescription` terminates the app.
-    static var isAvailable: Bool {
+    /// Whether scanning can be offered at all: a device with the hardware,
+    /// and a host app that declares camera usage. Asking for camera access
+    /// without `NSCameraUsageDescription` terminates the app.
+    ///
+    /// Both conditions hold for as long as the app runs, which is what makes
+    /// this the one to decide a screen on.
+    static var isSupported: Bool {
         #if targetEnvironment(simulator)
         // No camera in the simulator, so the scan path could not be walked at
         // all: not the screen that leads with it, and not the serial filter
@@ -27,8 +30,19 @@ struct G7PackageScannerView: UIViewControllerRepresentable {
         return true
         #else
         return DataScannerViewController.isSupported
-            && DataScannerViewController.isAvailable
             && Bundle.main.object(forInfoDictionaryKey: "NSCameraUsageDescription") != nil
+        #endif
+    }
+
+    /// Whether the scanner can start *right now*. Apple turns this off while
+    /// the camera is busy elsewhere or the device is too hot, and back on by
+    /// itself, so it is only worth asking at the moment of scanning — never
+    /// to decide which screen someone sees.
+    static var isAvailable: Bool {
+        #if targetEnvironment(simulator)
+        return true
+        #else
+        return isSupported && DataScannerViewController.isAvailable
         #endif
     }
 

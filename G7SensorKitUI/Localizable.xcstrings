@@ -509,6 +509,9 @@
     "and" : {
       "comment" : "Conjunction between the last two app names in a list"
     },
+    "Another app is using the camera, or the phone needs a moment. Try again shortly, or enter the 4 digits instead." : {
+      "comment" : "Message of the alert shown when the camera cannot start scanning right now"
+    },
     "Anything else you had set up in the Dexcom app, such as rising or falling rate alerts, is not carried over." : {
       "comment" : "Closing note of the alerts hand-off page"
     },
@@ -852,6 +855,9 @@
     },
     "Camera Access Is Off" : {
       "comment" : "Title of the alert shown when camera permission is denied"
+    },
+    "Camera Is Busy" : {
+      "comment" : "Title of the alert shown when the camera cannot start scanning right now"
     },
     "Cancel" : {
       "comment" : "Button text to cancel G7 setup",
@@ -2106,7 +2112,7 @@
       "comment" : "Button title to type the pairing code instead of scanning it"
     },
     "Enter the 4-digit pairing code printed on the sensor applicator." : {
-      "comment" : "Instructions on the pairing code entry screen when the applicator cannot be scanned"
+      "comment" : "Instructions on the screen where the pairing code is typed by hand"
     },
     "Entered %@, waiting for the sensor's next connection" : {
       "comment" : "Calibration outcome: pending (1: time entered)"

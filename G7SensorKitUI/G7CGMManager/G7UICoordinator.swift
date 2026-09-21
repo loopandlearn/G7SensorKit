@@ -269,7 +269,10 @@ class G7UICoordinator: UINavigationController, CGMManagerOnboarding, CompletionN
     /// to offer. Without one there is nothing to choose between, so that
     /// screen is skipped rather than shown with one way out.
     private func navigateToCodeEntry() {
-        navigate(to: G7PackageScannerView.isAvailable ? .scanCode : .enterCode)
+        // `isSupported`, not `isAvailable`: a camera that is momentarily busy
+        // frees up again, and routing on that would strand someone on the
+        // typing screen with no way back to the scan.
+        navigate(to: G7PackageScannerView.isSupported ? .scanCode : .enterCode)
     }
 
     /// The pre-pairing setup, kept for someone who cannot pair the sensor

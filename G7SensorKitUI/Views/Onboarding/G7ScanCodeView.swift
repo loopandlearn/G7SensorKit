@@ -25,6 +25,12 @@ struct G7ScanCodeView: View {
 
     @State private var showingScanner = false
     @State private var showingCameraDenied = false
+    @State private var showingCameraBusy = false
+    /// One scan is all this screen has to give: it hands the code on and the
+    /// flow moves to pairing. Without this, two taps in the simulator — where
+    /// the stand-in answers immediately, with no sheet in the way — push the
+    /// pairing screen twice.
+    @State private var hasScanned = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,6 +60,7 @@ struct G7ScanCodeView: View {
                     Label(LocalizedString("Scan Applicator", comment: "Button title to scan the applicator barcode"), systemImage: "qrcode.viewfinder")
                         .actionButtonStyle(.primary)
                 }
+                .disabled(hasScanned)
 
                 Button(action: didChooseManualEntry) {
                     Text(LocalizedString("Enter Code by Hand", comment: "Button title to type the pairing code instead of scanning it"))
@@ -62,6 +69,9 @@ struct G7ScanCodeView: View {
             }
             .padding([.horizontal, .bottom])
         }
+        // Coming back from pairing — "Change Code", or the back button —
+        // lands here again, and the screen has to work a second time.
+        .onAppear { hasScanned = false }
         .sheet(isPresented: $showingScanner) {
             NavigationView {
                 G7PackageScannerView { package in
@@ -87,10 +97,20 @@ struct G7ScanCodeView: View {
         } message: {
             Text(LocalizedString("Allow camera access in Settings to scan the code on the applicator, or type the 4 digits instead.", comment: "Message of the alert shown when camera permission is denied"))
         }
+        // No actions: the alert carries a standard OK on its own, and there
+        // is nothing for the user to change. Waiting is the whole fix.
+        .alert(
+            LocalizedString("Camera Is Busy", comment: "Title of the alert shown when the camera cannot start scanning right now"),
+            isPresented: $showingCameraBusy
+        ) {} message: {
+            Text(LocalizedString("Another app is using the camera, or the phone needs a moment. Try again shortly, or enter the 4 digits instead.", comment: "Message of the alert shown when the camera cannot start scanning right now"))
+        }
     }
 
     /// The scanner shows a blank view without camera access, so ask first.
     private func scanTapped() {
+        guard !hasScanned else { return }
+
         #if targetEnvironment(simulator)
         // There is no camera to open, and DataScannerViewController cannot be
         // built where it is unsupported, so the stand-in package stands in for
@@ -103,12 +123,12 @@ struct G7ScanCodeView: View {
 
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
-            showingScanner = true
+            presentScanner()
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .video) { granted in
                 DispatchQueue.main.async {
                     if granted {
-                        showingScanner = true
+                        presentScanner()
                     } else {
                         showingCameraDenied = true
                     }
@@ -119,11 +139,22 @@ struct G7ScanCodeView: View {
         }
     }
 
+    /// Opens the scanner, unless the camera cannot start it this moment.
+    /// Presenting anyway would show a sheet that never finds anything.
+    private func presentScanner() {
+        if G7PackageScannerView.isAvailable {
+            showingScanner = true
+        } else {
+            showingCameraBusy = true
+        }
+    }
+
     /// Only packages carrying a pairing code reach here; the scanner keeps
     /// looking past everything else.
     private func handleScannedPackage(_ package: G7SensorPackage) {
-        guard let pairingCode = package.pairingCode else { return }
+        guard !hasScanned, let pairingCode = package.pairingCode else { return }
 
+        hasScanned = true
         didScanCode(pairingCode, package.serial)
     }
 }
