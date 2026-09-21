@@ -1,6 +1,12 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%1$@ %2$d Day" : {
+      "comment" : "Sensor product name with its nominal session length (1: name, e.g. Dexcom G7, 2: days)"
+    },
+    "%1$@ says another display is connected to it, and no other sensor here took this code. Stop the Dexcom app from using it: delete it, turn off its Bluetooth, or force quit it. Then try again." : {
+      "comment" : "Pairing failure reason when the only remaining sensor keeps advertising its display slot as taken (1: sensor name)"
+    },
     "Dexcom G7" : {
       "comment" : "CGM display title",
       "localizations" : {
@@ -149,6 +155,15 @@
           }
         }
       }
+    },
+    "Dexcom ONE+" : {
+      "comment" : "CGM display title for a ONE+ sensor"
+    },
+    "Dexcom Stelo" : {
+      "comment" : "CGM display title for a Stelo sensor"
+    },
+    "Did not respond" : {
+      "comment" : "Reason a G7 sensor was ruled out during pairing: it never completed a handshake"
     },
     "Glucose data is unavailable" : {
       "comment" : "Error description for unreliable state",
@@ -305,6 +320,33 @@
         }
       }
     },
+    "In use by another phone" : {
+      "comment" : "Reason a G7 sensor was ruled out during pairing: another display holds its slot"
+    },
+    "No pairing code or saved key is available for this sensor." : {
+      "comment" : "Error description when a G7 authentication is attempted with no credentials"
+    },
+    "No readings have arrived for 20 minutes. Keep your phone within range of the sensor. If this continues, check your glucose with a meter." : {
+      "comment" : "Alert body for signal loss"
+    },
+    "No Sensor Readings" : {
+      "comment" : "Alert title for signal loss"
+    },
+    "No sensor was found in 20 minutes. Make sure the sensor is inserted and within range, and that no other phone or app is using it." : {
+      "comment" : "Pairing failure reason when the scan for a G7 sensor times out"
+    },
+    "Not this sensor's code" : {
+      "comment" : "Reason a G7 sensor was ruled out during pairing: its challenge response did not match the entered code"
+    },
+    "OK" : {
+      "comment" : "Alert acknowledgment button label"
+    },
+    "Refused the connection" : {
+      "comment" : "Reason a G7 sensor was ruled out during pairing: it rejected the session"
+    },
+    "Sensor Connection Refused" : {
+      "comment" : "Alert title when the sensor refuses authentication"
+    },
     "Sensor expired" : {
       "comment" : "The description of sensor algorithm state when sensor is expired.",
       "localizations" : {
@@ -454,6 +496,15 @@
         }
       }
     },
+    "Sensor Expired" : {
+      "comment" : "Alert title at nominal sensor expiry"
+    },
+    "Sensor Expires in 2 Hours" : {
+      "comment" : "Alert title 2 hours before sensor expiry"
+    },
+    "Sensor Expires in 24 Hours" : {
+      "comment" : "Alert title 24 hours before sensor expiry"
+    },
     "Sensor failed" : {
       "comment" : "The description of sensor algorithm state when sensor failed.",
       "localizations" : {
@@ -602,6 +653,9 @@
           }
         }
       }
+    },
+    "Sensor Failed" : {
+      "comment" : "Alert title for a failed sensor"
     },
     "Sensor is in unknown state %1$d" : {
       "comment" : "The description of sensor algorithm state when raw value is unknown. (1: missing data details)",
@@ -1216,6 +1270,45 @@
           }
         }
       }
+    },
+    "Sensor Session Ended" : {
+      "comment" : "Alert title at the end of the sensor grace period"
+    },
+    "The pairing code is the 4-digit number printed on the sensor applicator." : {
+      "comment" : "Pairing failure reason for a malformed G7 pairing code"
+    },
+    "The sensor accepted the pairing code but refused the connection." : {
+      "comment" : "Error description for a G7 sensor rejecting an authenticated connection with no reason given"
+    },
+    "The sensor is already connected to another phone or app. A sensor only works with one at a time; stop the other one from using this sensor, then try again." : {
+      "comment" : "Error description when a G7 sensor's display slot is taken"
+    },
+    "The sensor no longer recognizes this phone and will be paired again automatically." : {
+      "comment" : "Error description when a G7 sensor has lost the app's key"
+    },
+    "The sensor refused to connect. It may be in use by another phone or app. Open the CGM settings for details." : {
+      "comment" : "Alert body when the sensor refuses authentication"
+    },
+    "The sensor rejected this phone's key." : {
+      "comment" : "Error description when a G7 sensor reports a key mismatch"
+    },
+    "This sensor does not match the pairing code entered." : {
+      "comment" : "Error description when a G7 sensor's challenge response does not match the pairing code"
+    },
+    "Your sensor has reached the end of its session. Readings continue for up to 12 more hours; replace it before then." : {
+      "comment" : "Alert body at nominal sensor expiry"
+    },
+    "Your sensor has stopped working and is not sending readings. Remove it and start a new sensor. Check your glucose with a meter in the meantime." : {
+      "comment" : "Alert body for a failed sensor"
+    },
+    "Your sensor session ends in about 2 hours. Change your sensor soon to avoid a gap in readings." : {
+      "comment" : "Alert body 2 hours before sensor expiry"
+    },
+    "Your sensor session ends in about a day. Have a new sensor ready." : {
+      "comment" : "Alert body 24 hours before sensor expiry"
+    },
+    "Your sensor session has ended and readings have stopped. Apply and pair a new sensor." : {
+      "comment" : "Alert body at the end of the grace period"
     }
   },
   "version" : "1.0"
