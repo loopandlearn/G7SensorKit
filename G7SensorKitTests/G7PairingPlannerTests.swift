@@ -108,9 +108,96 @@ class G7PairingPlannerTests: XCTestCase {
         _ = planner.ruleOutCurrent(.wrongPairingCode)
 
         XCTAssertFalse(planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: false))
-        XCTAssertFalse(planner.updateSlot(id: a, isPhoneSlotHeld: true), "a ruled-out sensor is not re-queued by a change of slot")
+        planner.recordAdvertisement(id: a, isPhoneSlotHeld: true)
         XCTAssertEqual(planner.status(of: a), .ruledOut(.wrongPairingCode))
+        XCTAssertEqual(planner.candidates.first?.isPhoneSlotHeld, false, "a ruled-out sensor is not re-queued by a change of slot")
         XCTAssertNil(planner.currentCandidate)
+    }
+
+    /// The slot in the advertisement is the only evidence a stuck run has, so
+    /// it keeps being read after the sensor is out of the running.
+    func testHeldSlotCyclesCountOncePerAdvertisingWindow() {
+        var planner = G7PairingPlanner()
+        let start = Date()
+        planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: true)
+
+        XCTAssertTrue(planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: start))
+        XCTAssertEqual(planner.candidates.first?.heldSlotCycles, 1)
+
+        // Still the same burst: a leased sensor advertises for about two
+        // seconds around each reading.
+        XCTAssertFalse(planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: start + 2))
+        XCTAssertEqual(planner.candidates.first?.heldSlotCycles, 1)
+
+        // The next reading, five minutes on.
+        XCTAssertTrue(planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: start + 300))
+        XCTAssertEqual(planner.candidates.first?.heldSlotCycles, 2)
+
+        // A freed slot is news, but it is not another cycle of a held one.
+        XCTAssertTrue(planner.recordAdvertisement(id: a, isPhoneSlotHeld: false, at: start + 600))
+        XCTAssertEqual(planner.candidates.first?.heldSlotCycles, 2)
+        XCTAssertEqual(planner.candidates.first?.isPhoneSlotHeld, false)
+    }
+
+    /// Something that keeps renewing the sensor's lease will not stop because
+    /// we waited longer, so the run says so instead of scanning on.
+    func testTheRunIsBlockedByASensorHeldAcrossThreeCycles() {
+        var planner = G7PairingPlanner()
+        let start = Date()
+        planner.addCandidate(id: a, name: "DX0217", isPhoneSlotHeld: true)
+        planner.addCandidate(id: b, name: "DXCM01", isPhoneSlotHeld: false)
+
+        _ = planner.ruleOutCurrent(.inUseElsewhere)
+        planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: start)
+        planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: start + 300)
+        planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: start + 600)
+        XCTAssertNil(planner.heldSlotBlocker, "the other sensor has not had its turn yet")
+
+        _ = planner.ruleOutCurrent(.wrongPairingCode)
+        XCTAssertEqual(planner.heldSlotBlocker?.id, a)
+    }
+
+    func testTheBlockerNeedsAllThreeCycles() {
+        var planner = G7PairingPlanner()
+        let start = Date()
+        planner.addCandidate(id: a, name: "DX0217", isPhoneSlotHeld: true)
+        _ = planner.ruleOutCurrent(.inUseElsewhere)
+
+        for cycle in 0 ..< G7PairingPlanner.heldSlotCyclesBeforeGivingUp {
+            XCTAssertNil(planner.heldSlotBlocker, "gave up after \(cycle) cycles")
+            planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: start + Double(cycle) * 300)
+        }
+        XCTAssertEqual(planner.heldSlotBlocker?.id, a)
+    }
+
+    /// A sensor that answered with proof the code is not its own has already
+    /// explained itself; its slot is beside the point.
+    func testASensorThatRejectedTheCodeIsNeverTheBlocker() {
+        var planner = G7PairingPlanner()
+        let start = Date()
+        planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: true)
+        _ = planner.ruleOutCurrent(.wrongPairingCode)
+
+        for cycle in 0 ..< 5 {
+            planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: start + Double(cycle) * 300)
+        }
+        XCTAssertNil(planner.heldSlotBlocker)
+    }
+
+    func testPairedCandidateIsMarked() {
+        var planner = G7PairingPlanner()
+        planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: false)
+        planner.beginAttempt()
+        planner.markCurrentPaired()
+        XCTAssertEqual(planner.status(of: a), .paired)
+    }
+
+    func testConnectingIsReportedOnce() {
+        var planner = G7PairingPlanner()
+        planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: false)
+        XCTAssertTrue(planner.markConnecting())
+        XCTAssertFalse(planner.markConnecting(), "an unchanged run should not republish")
+        XCTAssertEqual(planner.status(of: a), .connecting)
     }
 
     /// The held slot expires after ~15 minutes of silence, so a repeat
@@ -122,20 +209,20 @@ class G7PairingPlannerTests: XCTestCase {
         planner.addCandidate(id: c, name: "free", isPhoneSlotHeld: false)
         XCTAssertEqual(planner.candidates.map(\.name), ["current", "free", "held"])
 
-        XCTAssertTrue(planner.updateSlot(id: b, isPhoneSlotHeld: false))
+        XCTAssertTrue(planner.recordAdvertisement(id: b, isPhoneSlotHeld: false))
         XCTAssertEqual(planner.candidates.map(\.name), ["current", "free", "held"], "discovery order holds within a class")
 
-        XCTAssertTrue(planner.updateSlot(id: c, isPhoneSlotHeld: true))
+        XCTAssertTrue(planner.recordAdvertisement(id: c, isPhoneSlotHeld: true))
         XCTAssertEqual(planner.candidates.map(\.name), ["current", "held", "free"])
 
-        XCTAssertFalse(planner.updateSlot(id: c, isPhoneSlotHeld: true), "no change reports no change")
+        XCTAssertFalse(planner.recordAdvertisement(id: c, isPhoneSlotHeld: true), "no change reports no change")
     }
 
     func testSlotUpdateNeverMovesTheCurrentCandidate() {
         var planner = G7PairingPlanner()
         planner.addCandidate(id: a, name: "current", isPhoneSlotHeld: false)
         planner.addCandidate(id: b, name: "other", isPhoneSlotHeld: false)
-        planner.updateSlot(id: a, isPhoneSlotHeld: true)
+        planner.recordAdvertisement(id: a, isPhoneSlotHeld: true)
         XCTAssertEqual(planner.currentCandidate?.id, a, "a candidate mid-handshake must stay put")
     }
 

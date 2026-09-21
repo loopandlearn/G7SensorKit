@@ -94,6 +94,12 @@ public struct G7PairingCandidate: Identifiable, Equatable {
     /// taken. It may be our own hold on it, so it is a reason to defer the
     /// sensor, never to drop it.
     public var isPhoneSlotHeld: Bool
+    /// How many separate advertising cycles announced the slot as taken.
+    /// Read from the advertisement's types-in-use byte, so it costs no
+    /// connection and keeps counting after the sensor is ruled out.
+    public var heldSlotCycles: Int
+    /// When the last counted cycle was, to tell one cycle from the next.
+    public var lastHeldSlotCycle: Date?
     /// Failed attempts so far. Not reset when the candidate is ruled out.
     public var attempts: Int
     public var status: G7PairingCandidateStatus
@@ -136,6 +142,18 @@ struct G7PairingPlanner {
         case waitForNewCandidates
     }
 
+    /// Advertisements closer together than this are one burst, not two
+    /// cycles: a sensor whose slot is leased only speaks up in a ~2 second
+    /// window around each 5-minute reading.
+    static let heldSlotCycleInterval: TimeInterval = 60
+
+    /// How many cycles of "a display is connected to me" settle it. The
+    /// lease a sensor advertises lapses after ~15 minutes of silence, so a
+    /// slot still held three cycles later is being refreshed by something
+    /// that is still talking to the sensor, and no amount of waiting will
+    /// free it.
+    static let heldSlotCyclesBeforeGivingUp = 3
+
     /// Every sensor found, in the order they are tried: ruled-out ones first
     /// (oldest first), then the one under trial, then those still waiting.
     private(set) var candidates: [G7PairingCandidate] = []
@@ -154,6 +172,27 @@ struct G7PairingPlanner {
         candidates.first { $0.id == id }?.status
     }
 
+    /// The sensor holding the run up, if there is one: everything found has
+    /// been ruled out, and this one keeps announcing that a display is
+    /// connected to it. Something is refreshing that lease every few
+    /// minutes, so the run cannot get anywhere until the user stops it, and
+    /// scanning on would only keep the screen busy.
+    ///
+    /// A sensor that answered with proof the code is not its own is never
+    /// the one: it said something definite about itself, while this one
+    /// never gave us the chance to find out.
+    var heldSlotBlocker: G7PairingCandidate? {
+        guard !candidates.isEmpty,
+              candidates.allSatisfy({ $0.status.ruleOutReason != nil })
+        else {
+            return nil
+        }
+        return candidates
+            .filter { $0.status.ruleOutReason != .wrongPairingCode }
+            .max { $0.heldSlotCycles < $1.heldSlotCycles }
+            .flatMap { $0.heldSlotCycles >= G7PairingPlanner.heldSlotCyclesBeforeGivingUp ? $0 : nil }
+    }
+
     /// Adds a newly discovered sensor. Returns false if it was already known,
     /// including when it was ruled out earlier.
     ///
@@ -169,6 +208,8 @@ struct G7PairingPlanner {
             id: id,
             name: name,
             isPhoneSlotHeld: isPhoneSlotHeld,
+            heldSlotCycles: 0,
+            lastHeldSlotCycle: nil,
             attempts: 0,
             status: .waiting
         )
@@ -184,19 +225,35 @@ struct G7PairingPlanner {
         return true
     }
 
-    /// Records a fresh advertisement from a known candidate. A held slot
-    /// frees up after ~15 minutes of silence, so a candidate deferred earlier
-    /// can become preferable. A candidate already ruled out is never
-    /// reordered: it is out of the running whatever its slot says now.
+    /// Records a fresh advertisement from a known candidate: which slots it
+    /// says are in use, and whether that is another cycle of a slot still
+    /// held. A held slot frees up after ~15 minutes of silence, so a
+    /// candidate deferred earlier can become preferable; a slot that stays
+    /// held instead is evidence that something else keeps connecting to the
+    /// sensor, which is worth counting even for a candidate already ruled
+    /// out (it is the only thing that explains a run getting nowhere).
     ///
     /// Returns whether anything changed.
     @discardableResult
-    mutating func updateSlot(id: UUID, isPhoneSlotHeld: Bool) -> Bool {
-        guard let index = candidates.firstIndex(where: { $0.id == id }),
-              candidates[index].isPhoneSlotHeld != isPhoneSlotHeld,
+    mutating func recordAdvertisement(id: UUID, isPhoneSlotHeld: Bool, at date: Date = Date()) -> Bool {
+        guard let index = candidates.firstIndex(where: { $0.id == id }) else {
+            return false
+        }
+
+        var changed = false
+        if isPhoneSlotHeld {
+            let last = candidates[index].lastHeldSlotCycle
+            if last == nil || date.timeIntervalSince(last!) >= G7PairingPlanner.heldSlotCycleInterval {
+                candidates[index].heldSlotCycles += 1
+                candidates[index].lastHeldSlotCycle = date
+                changed = true
+            }
+        }
+
+        guard candidates[index].isPhoneSlotHeld != isPhoneSlotHeld,
               candidates[index].status.ruleOutReason == nil
         else {
-            return false
+            return changed
         }
         candidates[index].isPhoneSlotHeld = isPhoneSlotHeld
 

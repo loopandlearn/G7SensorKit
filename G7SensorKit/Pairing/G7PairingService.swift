@@ -556,6 +556,31 @@ public final class G7PairingService {
             readyManagers.removeAll()
             bluetoothManager?.scanForPeripheral()
         }
+
+        // The rule-out just made may have been the last thing standing
+        // between the run and a sensor that is only ever going to say it is
+        // busy.
+        failIfHeldSlotBlocksTheRun()
+    }
+
+    /// Ends a run that cannot go anywhere: everything found has been ruled
+    /// out and the one sensor that never rejected the code keeps advertising
+    /// its display slot as taken. Waiting cannot free it, because whatever
+    /// holds it is connecting often enough to keep renewing the lease, so
+    /// the user is told what to go and stop rather than left watching a
+    /// timer run out.
+    private func failIfHeldSlotBlocksTheRun() {
+        guard isRunActive, let blocker = planner.heldSlotBlocker else {
+            return
+        }
+        report("\(blocker.name) has advertised its display slot as taken \(blocker.heldSlotCycles) times; giving up")
+        fail(String(
+            format: LocalizedString(
+                "%1$@ reports that another display is connected to it, and no other sensor in range accepted this pairing code. A sensor works with one app at a time: close or delete the Dexcom app, or stop the other phone or receiver using this sensor, then try again.",
+                comment: "Pairing failure reason when the only remaining sensor keeps advertising its display slot as taken (1: sensor name)"
+            ),
+            blocker.name
+        ))
     }
 
     private func report(_ message: String) {
@@ -580,16 +605,17 @@ extension G7PairingService: G7BluetoothManagerDelegate {
             return .ignore
         }
 
-        if ruledOutIdentifiers.value.contains(peripheral.identifier) {
-            return .ignore
-        }
-
         if let serial = expectedSerial, !advertisement.couldHaveSerial(serial) {
             log.debug("Skipping %{public}@: not the scanned sensor", advertisement.name)
             return .ignore
         }
 
         let id = peripheral.identifier
+        // A ruled-out sensor is still listened to, just never connected to
+        // again: what its advertisement says about its display slot is the
+        // only explanation a stuck run has to offer.
+        let isRuledOut = ruledOutIdentifiers.value.contains(id)
+
         onMain { [weak self] in
             guard let self = self, self.isRunActive else { return }
             let isHeld = advertisement.isSlotHeld(for: displayType) ?? false
@@ -597,14 +623,23 @@ extension G7PairingService: G7BluetoothManagerDelegate {
                 self.report(isHeld
                     ? "Found \(advertisement.name); another phone connected recently, so trying others first"
                     : "Found \(advertisement.name)")
+                self.planner.recordAdvertisement(id: id, isPhoneSlotHeld: isHeld)
                 self.publishProgress()
-            } else if self.planner.updateSlot(id: id, isPhoneSlotHeld: isHeld) {
-                self.report("\(advertisement.name) slot is now \(isHeld ? "held" : "free")")
-                self.publishProgress()
+            } else {
+                let wasHeld = self.planner.candidates.first { $0.id == id }?.isPhoneSlotHeld
+                if self.planner.recordAdvertisement(id: id, isPhoneSlotHeld: isHeld) {
+                    if wasHeld != isHeld {
+                        self.report("\(advertisement.name) slot is now \(isHeld ? "held" : "free")")
+                    }
+                    self.publishProgress()
+                }
             }
-            self.armCandidateWatchdog()
+            if !isRuledOut {
+                self.armCandidateWatchdog()
+            }
+            self.failIfHeldSlotBlocksTheRun()
         }
-        return .connect
+        return isRuledOut ? .ignore : .connect
     }
 
     func bluetoothManagerShouldAcceptRestoredPeripherals(_ manager: G7BluetoothManager) -> Bool {
