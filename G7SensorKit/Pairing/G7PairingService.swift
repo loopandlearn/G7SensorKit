@@ -14,10 +14,10 @@ import os.log
 
 public enum G7PairingState: Equatable {
     case idle
-    /// Looking for sensors. `candidates` names the ones found so far.
-    case scanning(candidates: [String])
-    /// Running the handshake against `candidate`; `attempt` is 1-based.
-    case authenticating(candidate: String, attempt: Int)
+    /// A run in progress: every sensor heard from so far, in the order they
+    /// are tried, each carrying how far it got. Empty while the scan has
+    /// found nothing yet.
+    case running(candidates: [G7PairingCandidate])
     /// Paired. `sharedKey` must be persisted: it is what lets reconnects skip
     /// the key exchange.
     case succeeded(peripheralIdentifier: UUID, sharedKey: Data, deviceName: String?)
@@ -27,10 +27,11 @@ public enum G7PairingState: Equatable {
         switch self {
         case .succeeded, .failed:
             return true
-        case .idle, .scanning, .authenticating:
+        case .idle, .running:
             return false
         }
     }
+
 }
 
 /// What a successful pairing run leaves for the session to take over: the
@@ -56,11 +57,14 @@ public struct G7PairingHandoff {
 /// Bluetooth queue, and the callbacks arrive on exactly that queue.
 public final class G7PairingService {
 
-    /// How long to look for a first candidate before giving up. A sensor
-    /// another display used within the last ~15 minutes advertises only in a
-    /// brief window around each 5-minute reading until that lease lapses, so
-    /// the wait has to outlast the lease with room to spare. The screen shows
-    /// the elapsed time and offers a way out throughout.
+    /// How long to look for a first candidate before giving up. Only a run
+    /// that has never heard a sensor at all ever gives up: once one has been
+    /// found the screen can show what became of it, so the scan keeps going
+    /// until the user stops it. A sensor another display used within the last
+    /// ~15 minutes advertises only in a brief window around each 5-minute
+    /// reading until that lease lapses, so the wait has to outlast the lease
+    /// with room to spare. The screen shows the elapsed time and offers a way
+    /// out throughout.
     public static let scanTimeout: TimeInterval = 20 * 60
 
     /// Connect-to-ready deadline for the candidate under trial.
@@ -123,6 +127,11 @@ public final class G7PairingService {
     private var planner = G7PairingPlanner()
     private var readyManagers: [UUID: G7PeripheralManager] = [:]
 
+    /// The sensors ruled out so far. Read from the Bluetooth queue to turn
+    /// their advertisements away, so a ruled-out sensor is never connected to
+    /// again, and written on main as the planner drops them.
+    private let ruledOutIdentifiers = Locked<Set<UUID>>([])
+
     private var authenticationInFlight = false
     /// Bumped whenever an in-flight handshake is disowned, so its late
     /// completion is ignored.
@@ -166,6 +175,16 @@ public final class G7PairingService {
         DispatchQueue.main.async { [weak self] in
             self?.onStateChange?(newState)
         }
+    }
+
+    /// Republishes the run from the planner. Called after every change to a
+    /// candidate, so the screen can narrate what pairing is doing rather than
+    /// only that it is busy.
+    private func publishProgress() {
+        guard !state.isFinished else {
+            return
+        }
+        setState(.running(candidates: planner.candidates))
     }
 
     private var isRunActive: Bool {
@@ -225,12 +244,16 @@ public final class G7PairingService {
         bluetoothManager = manager
 
         scanStartedAt = Date()
-        setState(.scanning(candidates: []))
+        setState(.running(candidates: []))
         onBluetoothStateChange?(manager.centralState)
         manager.scanForPeripheral()
 
+        // Only a run that has never heard a sensor at all gives up. Once one
+        // has been found, the screen shows what happened to it and the scan
+        // keeps going until the user stops it: the sensor that will pair may
+        // be one that has not advertised yet.
         let watchdog = DispatchWorkItem { [weak self] in
-            guard let self = self, case .scanning(let candidates) = self.state, candidates.isEmpty else {
+            guard let self = self, case .running(let candidates) = self.state, candidates.isEmpty else {
                 return
             }
             self.fail(LocalizedString(
@@ -255,6 +278,7 @@ public final class G7PairingService {
 
         releaseBluetoothManager()
         planner = G7PairingPlanner()
+        ruledOutIdentifiers.value = []
         expectedSerial = nil
         excludedPeripheralIdentifier = nil
         setState(.idle)
@@ -295,13 +319,22 @@ public final class G7PairingService {
     /// CoreBluetooth reports `.unsupported` in the simulator. Walk the same
     /// states with a stand-in sensor so onboarding can be exercised.
     private func startSimulatedRun() {
-        setState(.scanning(candidates: []))
+        scanStartedAt = Date()
+        setState(.running(candidates: []))
         let name = "DXCM" + pairingCode.suffix(2)
         let authenticate = DispatchWorkItem { [weak self] in
             guard let self = self, !self.state.isFinished else { return }
-            self.setState(.authenticating(candidate: name, attempt: 1))
+            // A stand-in ruled-out sensor too: the screen's job is to show
+            // both outcomes, so both have to be walkable without hardware.
+            self.planner.addCandidate(id: UUID(), name: "DX0299", isPhoneSlotHeld: true)
+            _ = self.planner.ruleOutCurrent(.inUseElsewhere)
+            self.planner.addCandidate(id: UUID(), name: name, isPhoneSlotHeld: false)
+            self.planner.beginAttempt()
+            self.publishProgress()
             let succeed = DispatchWorkItem { [weak self] in
                 guard let self = self, !self.state.isFinished else { return }
+                self.planner.markCurrentPaired()
+                self.publishProgress()
                 self.setState(.succeeded(
                     peripheralIdentifier: UUID(),
                     sharedKey: G7JPAKE.secureRandomBytes(16),
@@ -326,6 +359,10 @@ public final class G7PairingService {
         else {
             return
         }
+        if planner.markConnecting() {
+            publishProgress()
+        }
+
         let id = candidate.id
         let watchdog = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
@@ -360,8 +397,8 @@ public final class G7PairingService {
         }
 
         authenticationInFlight = true
-        let attempt = planner.nextAttemptNumber
-        setState(.authenticating(candidate: candidate.name, attempt: attempt))
+        let attempt = planner.beginAttempt()
+        publishProgress()
         report("Trying \(candidate.name), attempt \(attempt)")
 
         cancelCandidateWatchdog()
@@ -414,6 +451,8 @@ public final class G7PairingService {
                     // the other candidates are let go. Terminal state first,
                     // so their disconnects are not scored as failures.
                     self.authenticatedPeripheralManager = peripheralManager
+                    self.planner.markCurrentPaired()
+                    self.publishProgress()
                     self.setState(.succeeded(
                         peripheralIdentifier: candidate.id,
                         sharedKey: authResult.sharedKey,
@@ -428,18 +467,52 @@ public final class G7PairingService {
         }
     }
 
-    private func handleCandidateFailure(error: Error? = nil) {
-        let action: G7PairingPlanner.Action
+    /// Why this candidate is out of the running for good, or nil for an
+    /// ordinary failure that another attempt might get past.
+    private func ruleOutReason(for error: Error?) -> G7PairingRuleOutReason? {
+        guard let error = error as? G7AuthenticatorError else {
+            return nil
+        }
         switch error {
-        case G7AuthenticatorError.rejected?:
-            // Terminal for this sensor, and retrying invites the lockout.
-            action = planner.abandonCurrentCandidate(reason: String(describing: error!))
-        case G7AuthenticatorError.challengeMismatch?:
+        case .challengeMismatch:
             // Proof that this sensor does not belong to the entered code.
-            action = planner.abandonCurrentCandidate(reason: String(describing: error!))
-        default:
+            return .wrongPairingCode
+        case .rejected(_, let failureCode):
+            // Terminal for this sensor, and retrying invites the lockout.
+            switch failureCode {
+            case .challengeMismatch?:
+                return .wrongPairingCode
+            case .deviceTypeRestriction?:
+                return .inUseElsewhere
+            default:
+                return .refused
+            }
+        case .timeout, .unexpectedResponse, .noCredentials:
+            return nil
+        }
+    }
+
+    private func handleCandidateFailure(error: Error? = nil) {
+        // Whatever happens next starts its own connect deadline; a leftover
+        // one would only be in the way of arming it.
+        cancelCandidateWatchdog()
+
+        let candidateID = planner.currentCandidate?.id
+        let action: G7PairingPlanner.Action
+        if let reason = ruleOutReason(for: error) {
+            action = planner.ruleOutCurrent(reason)
+        } else {
             action = planner.recordFailure()
         }
+        if let candidate = planner.candidates.first(where: { $0.id == candidateID }),
+           let reason = candidate.status.ruleOutReason {
+            report("\(candidate.name) ruled out: \(reason.localizedDescription)")
+        }
+        // A ruled-out sensor's advertisements are turned away from here on:
+        // reconnecting to it costs the next candidate its turn, and a fourth
+        // rejection would put it into a connection-refusing cooldown.
+        ruledOutIdentifiers.value = Set(planner.candidates.filter { $0.status.ruleOutReason != nil }.map(\.id))
+        publishProgress()
 
         switch action {
         case .retryCurrent:
@@ -461,7 +534,6 @@ public final class G7PairingService {
             }
 
         case .advanceToNext:
-            setState(.scanning(candidates: planner.candidates.map(\.name)))
             if planner.currentCandidate.flatMap({ readyManagers[$0.id] }) != nil {
                 authenticateCurrentCandidate()
             } else {
@@ -469,8 +541,15 @@ public final class G7PairingService {
                 armCandidateWatchdog()
             }
 
-        case .giveUp(let reason):
-            fail(reason)
+        case .waitForNewCandidates:
+            // Nothing left that can pair, which is not the end of the run: the
+            // sensor being paired may simply not have advertised yet. One that
+            // a display used in the last ~15 minutes only speaks up for about
+            // two seconds around each 5-minute reading.
+            report("Every sensor found so far is ruled out; still looking")
+            bluetoothManager?.disconnectAll()
+            readyManagers.removeAll()
+            bluetoothManager?.scanForPeripheral()
         }
     }
 
@@ -496,6 +575,10 @@ extension G7PairingService: G7BluetoothManagerDelegate {
             return .ignore
         }
 
+        if ruledOutIdentifiers.value.contains(peripheral.identifier) {
+            return .ignore
+        }
+
         if let serial = expectedSerial, !advertisement.couldHaveSerial(serial) {
             log.debug("Skipping %{public}@: not the scanned sensor", advertisement.name)
             return .ignore
@@ -509,11 +592,10 @@ extension G7PairingService: G7BluetoothManagerDelegate {
                 self.report(isHeld
                     ? "Found \(advertisement.name); another phone connected recently, so trying others first"
                     : "Found \(advertisement.name)")
-                if case .scanning = self.state {
-                    self.setState(.scanning(candidates: self.planner.candidates.map(\.name)))
-                }
-            } else if let isHeld = advertisement.isSlotHeld(for: displayType), self.planner.updateSlot(id: id, isPhoneSlotHeld: isHeld) {
+                self.publishProgress()
+            } else if self.planner.updateSlot(id: id, isPhoneSlotHeld: isHeld) {
                 self.report("\(advertisement.name) slot is now \(isHeld ? "held" : "free")")
+                self.publishProgress()
             }
             self.armCandidateWatchdog()
         }

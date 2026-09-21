@@ -19,6 +19,7 @@ class G7PairingPlannerTests: XCTestCase {
         XCTAssertNil(planner.currentCandidate)
         XCTAssertTrue(planner.addCandidate(id: a, name: "DXCM01", isPhoneSlotHeld: false))
         XCTAssertEqual(planner.currentCandidate?.id, a)
+        XCTAssertEqual(planner.currentCandidate?.status, .waiting)
         XCTAssertEqual(planner.nextAttemptNumber, 1)
     }
 
@@ -49,52 +50,67 @@ class G7PairingPlannerTests: XCTestCase {
         var planner = G7PairingPlanner()
         planner.addCandidate(id: a, name: "free", isPhoneSlotHeld: false)
         planner.addCandidate(id: b, name: "held", isPhoneSlotHeld: true)
-        XCTAssertEqual(planner.abandonCurrentCandidate(reason: "rejected"), .advanceToNext)
+        XCTAssertEqual(planner.ruleOutCurrent(.wrongPairingCode), .advanceToNext)
         XCTAssertEqual(planner.currentCandidate?.name, "held", "a held sensor may be our own; it still gets a turn")
     }
 
-    func testOrdinaryFailuresRetryThenAdvance() {
+    func testOrdinaryFailuresRetryThenRuleOutAsUnreachable() {
         var planner = G7PairingPlanner()
         planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: false)
         planner.addCandidate(id: b, name: "B", isPhoneSlotHeld: false)
 
-        for attempt in 1 ..< G7PairingPlanner.attemptsPerCandidate {
+        for attempt in 1 ..< G7PairingCandidate.maximumAttempts {
             XCTAssertEqual(planner.nextAttemptNumber, attempt)
+            XCTAssertEqual(planner.beginAttempt(), attempt)
+            XCTAssertEqual(planner.currentCandidate?.status, .pairing(attempt: attempt))
             XCTAssertEqual(planner.recordFailure(), .retryCurrent)
         }
         XCTAssertEqual(planner.recordFailure(), .advanceToNext)
+        XCTAssertEqual(planner.candidates.first?.status, .ruledOut(.unreachable))
         XCTAssertEqual(planner.currentCandidate?.id, b)
-        XCTAssertEqual(planner.nextAttemptNumber, 1, "attempts reset for the next candidate")
+        XCTAssertEqual(planner.nextAttemptNumber, 1, "attempts are counted per candidate")
     }
 
     /// A rejection is terminal for that sensor, and retrying it invites the
     /// lockout, so it is dropped on the first one.
-    func testRejectionAbandonsImmediately() {
+    func testRuleOutAbandonsImmediately() {
         var planner = G7PairingPlanner()
         planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: false)
         planner.addCandidate(id: b, name: "B", isPhoneSlotHeld: false)
 
-        XCTAssertEqual(planner.abandonCurrentCandidate(reason: "rejected"), .advanceToNext)
+        XCTAssertEqual(planner.ruleOutCurrent(.inUseElsewhere), .advanceToNext)
+        XCTAssertEqual(planner.candidates.first?.status, .ruledOut(.inUseElsewhere))
         XCTAssertEqual(planner.currentCandidate?.id, b)
     }
 
-    func testGiveUpAfterLastCandidate() {
+    /// Running out of candidates is not the end of the run: the sensor that
+    /// will pair may not have advertised yet.
+    func testExhaustedCandidatesKeepTheRunScanning() {
         var planner = G7PairingPlanner()
         planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: false)
 
-        guard case .giveUp(let reason) = planner.abandonCurrentCandidate(reason: "wrong code") else {
-            return XCTFail("expected give up")
-        }
-        XCTAssertTrue(reason.contains("A: wrong code"), "the user should learn why each sensor was skipped")
+        XCTAssertEqual(planner.ruleOutCurrent(.wrongPairingCode), .waitForNewCandidates)
         XCTAssertNil(planner.currentCandidate)
+        XCTAssertEqual(planner.recordFailure(), .waitForNewCandidates, "with nothing under trial there is nothing to score")
+
+        // A sensor arriving later takes its turn behind the ruled-out one,
+        // which keeps its verdict on screen.
+        XCTAssertTrue(planner.addCandidate(id: b, name: "B", isPhoneSlotHeld: false))
+        XCTAssertEqual(planner.currentCandidate?.id, b)
+        XCTAssertEqual(planner.candidates.map(\.status), [.ruledOut(.wrongPairingCode), .waiting])
     }
 
-    func testGiveUpWithNoCandidatesExplainsNothingWasFound() {
+    /// A sensor that has been ruled out stays ruled out: it advertises every
+    /// few seconds, and trying it again would cost the next candidate its turn.
+    func testRuledOutCandidateIsNeverReadmitted() {
         var planner = G7PairingPlanner()
-        guard case .giveUp(let reason) = planner.recordFailure() else {
-            return XCTFail("expected give up")
-        }
-        XCTAssertTrue(reason.lowercased().contains("no sensor"))
+        planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: false)
+        _ = planner.ruleOutCurrent(.wrongPairingCode)
+
+        XCTAssertFalse(planner.addCandidate(id: a, name: "A", isPhoneSlotHeld: false))
+        XCTAssertFalse(planner.updateSlot(id: a, isPhoneSlotHeld: true), "a ruled-out sensor is not re-queued by a change of slot")
+        XCTAssertEqual(planner.status(of: a), .ruledOut(.wrongPairingCode))
+        XCTAssertNil(planner.currentCandidate)
     }
 
     /// The held slot expires after ~15 minutes of silence, so a repeat
@@ -121,5 +137,13 @@ class G7PairingPlannerTests: XCTestCase {
         planner.addCandidate(id: b, name: "other", isPhoneSlotHeld: false)
         planner.updateSlot(id: a, isPhoneSlotHeld: true)
         XCTAssertEqual(planner.currentCandidate?.id, a, "a candidate mid-handshake must stay put")
+    }
+
+    func testModelComesFromTheAdvertisedName() {
+        var planner = G7PairingPlanner()
+        planner.addCandidate(id: a, name: "DXCM01", isPhoneSlotHeld: false)
+        planner.addCandidate(id: b, name: "DX0212", isPhoneSlotHeld: false)
+        planner.addCandidate(id: c, name: "DX0134", isPhoneSlotHeld: false)
+        XCTAssertEqual(planner.candidates.map(\.model), [.g7, .onePlus, .stelo])
     }
 }

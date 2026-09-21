@@ -14,6 +14,10 @@ final class G7PairingViewModel: ObservableObject {
 
     @Published private(set) var state: G7PairingState = .idle
 
+    /// Every sensor the run has heard from, kept after it ends so the screen
+    /// can still show what happened to each one.
+    @Published private(set) var candidates: [G7PairingCandidate] = []
+
     /// Assumed fine until the radio says otherwise, so the screen does not
     /// flash a warning before the central has reported in.
     @Published private(set) var bluetoothState: CBManagerState = .poweredOn
@@ -54,6 +58,9 @@ final class G7PairingViewModel: ObservableObject {
         service.onStateChange = { [weak self] state in
             guard let self = self else { return }
             self.state = state
+            if case .running(let candidates) = state {
+                self.candidates = candidates
+            }
             if case .succeeded(let peripheralIdentifier, let sharedKey, let deviceName) = state {
                 self.onSuccess(peripheralIdentifier, sharedKey, deviceName, self.service.handOff())
             }
@@ -61,6 +68,7 @@ final class G7PairingViewModel: ObservableObject {
     }
 
     func start() {
+        candidates = []
         service.start(pairingCode: pairingCode, serial: serial, excludingPeripheral: excludedPeripheral)
     }
 
@@ -74,6 +82,11 @@ final class G7PairingViewModel: ObservableObject {
 
     var scanStartedAt: Date? {
         service.scanStartedAt
+    }
+
+    /// The sensor being worked on right now, if any.
+    var activeCandidate: G7PairingCandidate? {
+        candidates.first { $0.status.isActive }
     }
 
     /// Why pairing cannot make progress right now, if the radio is the reason.
@@ -91,7 +104,7 @@ final class G7PairingViewModel: ObservableObject {
 
     var isWorking: Bool {
         switch state {
-        case .scanning, .authenticating:
+        case .running:
             return true
         case .idle, .succeeded, .failed:
             return false
@@ -99,15 +112,21 @@ final class G7PairingViewModel: ObservableObject {
     }
 
     var statusTitle: String {
+        if bluetoothProblem != nil {
+            return LocalizedString("Bluetooth Unavailable", comment: "Pairing status while the radio is off or not permitted")
+        }
         switch state {
         case .idle:
             return LocalizedString("Preparing…", comment: "Pairing status before the scan starts")
-        case .scanning(let candidates) where candidates.isEmpty:
-            return LocalizedString("Searching for sensor…", comment: "Pairing status while scanning with no sensor found yet")
-        case .scanning:
-            return LocalizedString("Connecting…", comment: "Pairing status once a sensor has been found")
-        case .authenticating:
-            return LocalizedString("Pairing…", comment: "Pairing status during the handshake")
+        case .running:
+            switch activeCandidate?.status {
+            case .connecting?:
+                return LocalizedString("Connecting…", comment: "Pairing status while connecting to a sensor")
+            case .pairing?:
+                return LocalizedString("Pairing…", comment: "Pairing status during the handshake")
+            default:
+                return LocalizedString("Searching for sensor…", comment: "Pairing status while scanning")
+            }
         case .succeeded:
             return LocalizedString("Paired", comment: "Pairing status on success")
         case .failed:
@@ -119,29 +138,65 @@ final class G7PairingViewModel: ObservableObject {
         switch state {
         case .idle:
             return nil
-        case .scanning(let candidates) where candidates.isEmpty:
-            return LocalizedString(
-                "Keep your phone near the sensor. A sensor that was recently used by the Dexcom app or another phone can take up to 15 minutes to become available; this screen will keep looking.",
-                comment: "Pairing guidance while scanning"
-            )
-        case .scanning(let candidates):
-            return String(
-                format: LocalizedString("Found %@", comment: "Pairing detail listing discovered sensors (1: comma-separated names)"),
-                candidates.joined(separator: ", ")
-            )
-        case .authenticating(let candidate, let attempt):
-            if attempt > 1 {
-                return String(
-                    format: LocalizedString("%1$@, attempt %2$d", comment: "Pairing detail for a retry (1: sensor name, 2: attempt number)"),
-                    candidate,
-                    attempt
+        case .running:
+            if let candidate = activeCandidate {
+                return detail(for: candidate)
+            }
+            if candidates.isEmpty {
+                return LocalizedString(
+                    "Keep your phone near the sensor. A sensor that was recently used by the Dexcom app or another phone can take up to 15 minutes to become available; this screen will keep looking.",
+                    comment: "Pairing guidance while scanning"
                 )
             }
-            return candidate
+            return LocalizedString(
+                "Every sensor found so far has been ruled out. Still looking for another one; a sensor in use elsewhere only announces itself briefly, every 5 minutes.",
+                comment: "Pairing guidance once every discovered sensor has been ruled out"
+            )
         case .succeeded(_, _, let deviceName):
             return deviceName
         case .failed(let reason):
             return reason
+        }
+    }
+
+    /// The nudge for a run where the code itself looks wrong: every sensor
+    /// that answered proved it holds a different one.
+    var wrongCodeHint: String? {
+        guard isWorking,
+              activeCandidate == nil,
+              !candidates.isEmpty,
+              candidates.contains(where: { $0.status.ruleOutReason == .wrongPairingCode })
+        else {
+            return nil
+        }
+        return String(
+            format: LocalizedString(
+                "No sensor found so far uses the code %@. Check the code on the applicator if this continues.",
+                comment: "Pairing hint when every sensor tried rejected the entered code (1: the pairing code)"
+            ),
+            pairingCode
+        )
+    }
+
+    /// The one-line status for a sensor in the list on screen.
+    func detail(for candidate: G7PairingCandidate) -> String {
+        switch candidate.status {
+        case .waiting:
+            return candidate.isPhoneSlotHeld
+                ? LocalizedString("Waiting; in use by another phone", comment: "Status of a discovered G7 sensor whose display slot is taken, waiting its turn")
+                : LocalizedString("Waiting its turn", comment: "Status of a discovered G7 sensor waiting its turn")
+        case .connecting:
+            return LocalizedString("Connecting", comment: "Status of the G7 sensor being connected to")
+        case .pairing(let attempt):
+            return String(
+                format: LocalizedString("Pairing, attempt %1$d of %2$d", comment: "Status of the G7 sensor under handshake (1: attempt number, 2: attempts allowed)"),
+                attempt,
+                G7PairingCandidate.maximumAttempts
+            )
+        case .ruledOut(let reason):
+            return reason.localizedDescription
+        case .paired:
+            return LocalizedString("Paired", comment: "Status of the G7 sensor that paired")
         }
     }
 }
