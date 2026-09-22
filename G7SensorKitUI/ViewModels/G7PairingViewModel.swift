@@ -97,8 +97,12 @@ final class G7PairingViewModel: ObservableObject {
     var displayCandidates: [G7PairingCandidate] {
         let current = candidates.filter { $0.status.isActive || $0.status == .paired }
         let waiting = candidates.filter { $0.status == .waiting }
-        let ruledOut = candidates.filter { $0.status.ruleOutReason != nil }
-        return current + waiting + ruledOut.reversed()
+        // Above the sensors that really are finished with: a busy one the run
+        // is still listening to is what the run is waiting on, and burying it
+        // at the bottom of the list says the opposite.
+        let busy = candidates.filter(\.isAwaitingASlotToFree)
+        let out = candidates.filter { $0.status.ruleOutReason != nil && !$0.isAwaitingASlotToFree }
+        return current + busy + waiting + out.reversed()
     }
 
     /// Which product to picture: the sensor under trial, or the most recent
@@ -247,6 +251,18 @@ final class G7PairingViewModel: ObservableObject {
 
     /// The one-line status for a sensor in the list on screen.
     func detail(for candidate: G7PairingCandidate) -> String {
+        // A sensor on a later turn is one whose slot freed up after it turned
+        // us away, which is the thing worth saying about it. Its attempts
+        // start over each turn, so the attempt number would read as though it
+        // had made no progress.
+        if candidate.turn > 1, !candidate.status.isSettled {
+            return String(
+                format: LocalizedString("Trying again, %1$d of %2$d", comment: "Status of a G7 sensor being tried again after its display slot freed up (1: turn number, 2: turns allowed)"),
+                candidate.turn,
+                G7PairingCandidate.maximumTurns
+            )
+        }
+
         switch candidate.status {
         case .waiting:
             return candidate.isPhoneSlotHeld
@@ -260,6 +276,9 @@ final class G7PairingViewModel: ObservableObject {
                 attempt,
                 G7PairingCandidate.maximumAttempts
             )
+        case .ruledOut where candidate.isAwaitingASlotToFree:
+            // Set aside, not finished with: the run is still listening to it.
+            return LocalizedString("In use by another phone; waiting for it to free up", comment: "Status of a G7 sensor set aside as busy while the run waits for its display slot to free")
         case .ruledOut(let reason):
             return reason.localizedDescription
         case .paired:

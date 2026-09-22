@@ -2801,6 +2801,9 @@
     "INSERT SENSOR" : {
       "comment" : "Section label above the insert-sensor steps"
     },
+    "In use by another phone; waiting for it to free up" : {
+      "comment" : "Status of a G7 sensor set aside as busy while the run waits for its display slot to free"
+    },
     "Keep the applicator until you have paired: the 4-digit pairing code is printed on it. Dispose of it as sharps afterwards." : {
       "comment" : "Apply step 5 note: keep the applicator for its code"
     },
@@ -6175,6 +6178,9 @@
     },
     "Try Again" : {
       "comment" : "Button title to retry pairing"
+    },
+    "Trying again, %1$d of %2$d" : {
+      "comment" : "Status of a G7 sensor being tried again after its display slot freed up (1: turn number, 2: turns allowed)"
     },
     "Turn off its Bluetooth" : {
       "comment" : "Title of the option to revoke the Dexcom app's Bluetooth permission"

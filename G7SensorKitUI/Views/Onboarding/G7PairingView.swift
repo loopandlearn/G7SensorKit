@@ -177,7 +177,9 @@ struct G7PairingView: View {
     }
 
     private func candidateRow(_ candidate: G7PairingCandidate) -> some View {
-        let isOut = candidate.status.ruleOutReason != nil
+        // Greyed out and desaturated says "finished with", which a sensor the
+        // run is still waiting on is not.
+        let isOut = candidate.status.ruleOutReason != nil && !candidate.isAwaitingASlotToFree
 
         return HStack(spacing: 12) {
             Group {
@@ -227,8 +229,17 @@ struct G7PairingView: View {
                 .foregroundColor(.secondary)
         case .connecting, .pairing:
             ProgressView()
+        case .ruledOut where candidate.isAwaitingASlotToFree:
+            // Set aside, not struck off: the run is still listening to this
+            // one and will give it another turn if its slot frees.
+            Image(systemName: "clock.badge.exclamationmark")
+                .foregroundColor(.secondary)
         case .ruledOut:
-            Image(systemName: "xmark.circle.fill")
+            // A plain glyph, not `xmark.circle.fill`: nothing in this list is
+            // tappable, and a filled x in a circle is the standard "remove
+            // this" control, so it invites a tap that does nothing.
+            Image(systemName: "xmark")
+                .font(.footnote.weight(.semibold))
                 .foregroundColor(.secondary)
         case .paired:
             // Green, not `guidanceColors.acceptable`: hosts map that to

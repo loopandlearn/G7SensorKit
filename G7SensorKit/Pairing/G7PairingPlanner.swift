@@ -132,6 +132,22 @@ public struct G7PairingCandidate: Identifiable, Equatable {
         G7SensorModel(advertisedName: name)
     }
 
+    /// Turns a busy sensor may have in all: its first, plus one for each time
+    /// its slot frees up again.
+    public static let maximumTurns = G7PairingPlanner.maximumReadmissions + 1
+
+    /// Which turn this sensor is on, 1-based.
+    public var turn: Int {
+        readmissions + 1
+    }
+
+    /// Whether the run has set this sensor aside as busy but is still
+    /// listening to it, ready to give it another turn if its slot frees. Not
+    /// out of the running, however the row reads.
+    public var isAwaitingASlotToFree: Bool {
+        status.ruleOutReason == .inUseElsewhere
+            && readmissions < G7PairingPlanner.maximumReadmissions
+    }
 }
 
 /// Decides which sensor to try next.
