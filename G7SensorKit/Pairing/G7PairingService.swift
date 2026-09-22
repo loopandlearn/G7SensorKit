@@ -104,7 +104,11 @@ public final class G7PairingService {
     /// The sensor a session is already paired with, when re-pairing. It is
     /// never the one being replaced, and trying it costs a handshake that
     /// ends in a rejection.
-    private var excludedPeripheralIdentifier: UUID?
+    ///
+    /// Read on the Bluetooth queue to turn its advertisements away, written
+    /// on main as a run starts, so it lives behind the same lock the run's
+    /// other cross-queue state does.
+    private let excludedPeripheralIdentifier = Locked<UUID?>(nil)
 
     /// The session's central, when re-pairing; nil during first-time setup,
     /// where the run creates the central the new session will adopt.
@@ -240,7 +244,7 @@ public final class G7PairingService {
         }
         self.pairingCode = code
         expectedSerial = serial
-        excludedPeripheralIdentifier = excluded
+        excludedPeripheralIdentifier.value = excluded
 
         #if targetEnvironment(simulator)
         startSimulatedRun()
@@ -298,7 +302,7 @@ public final class G7PairingService {
         ruledOutIdentifiers.value = []
         skippedBySerial.value = []
         expectedSerial = nil
-        excludedPeripheralIdentifier = nil
+        excludedPeripheralIdentifier.value = nil
         setState(.idle)
     }
 
@@ -684,7 +688,7 @@ extension G7PairingService: G7BluetoothManagerDelegate {
             return .ignore
         }
 
-        if peripheral.identifier == excludedPeripheralIdentifier {
+        if peripheral.identifier == excludedPeripheralIdentifier.value {
             return .ignore
         }
 
