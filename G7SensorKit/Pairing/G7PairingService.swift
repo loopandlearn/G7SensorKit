@@ -57,15 +57,17 @@ public struct G7PairingHandoff {
 /// Bluetooth queue, and the callbacks arrive on exactly that queue.
 public final class G7PairingService {
 
-    /// How long to look for a first candidate before giving up. Only a run
-    /// that has never heard a sensor at all ever gives up: once one has been
-    /// found the screen can show what became of it, so the scan keeps going
-    /// until the user stops it. A sensor another display used within the last
-    /// ~15 minutes advertises only in a brief window around each 5-minute
-    /// reading until that lease lapses, so the wait has to outlast the lease
-    /// with room to spare. The screen shows the elapsed time and offers a way
-    /// out throughout.
-    public static let scanTimeout: TimeInterval = 20 * 60
+    /// How long a whole run may take before it gives up, found a sensor or
+    /// not.
+    ///
+    /// Everything the run waits for fits inside this. A lease lapses after
+    /// ~15 minutes of the holder being silent, and a sensor that has said its
+    /// slot is taken for the 20 minutes that certainly outlast one gets a
+    /// final attempt after it. Past that there is nothing left to wait for
+    /// that a fresh run would not wait for again, and a scan that never ends
+    /// only keeps the radio busy. The screen shows the elapsed time and
+    /// offers a way out throughout.
+    public static let runTimeout: TimeInterval = 30 * 60
 
     /// Connect-to-ready deadline for the candidate under trial.
     static let candidateTimeout: TimeInterval = 20
@@ -269,21 +271,26 @@ public final class G7PairingService {
         onBluetoothStateChange?(manager.centralState)
         manager.scanForPeripheral()
 
-        // Only a run that has never heard a sensor at all gives up. Once one
-        // has been found, the screen shows what happened to it and the scan
-        // keeps going until the user stops it: the sensor that will pair may
-        // be one that has not advertised yet.
+        // A hard cap on the run, found a sensor or not. Every wait the run
+        // makes fits inside it, so a run still going at the end is one a
+        // fresh run would serve better than more scanning.
         let watchdog = DispatchWorkItem { [weak self] in
-            guard let self = self, case .running(let candidates) = self.state, candidates.isEmpty else {
+            guard let self = self, case .running(let candidates) = self.state else {
                 return
             }
-            self.fail(LocalizedString(
-                "No sensor was found in 20 minutes. Make sure the sensor is inserted and within range, and that no other phone or app is using it.",
-                comment: "Pairing failure reason when the scan for a G7 sensor times out"
-            ))
+            self.report("Nothing paired in 30 minutes; giving up")
+            self.fail(candidates.isEmpty
+                ? LocalizedString(
+                    "No sensor was found in 30 minutes. Make sure the sensor is inserted and within range, and that no other phone or app is using it.",
+                    comment: "Pairing failure reason when the scan for a G7 sensor finds nothing at all"
+                )
+                : LocalizedString(
+                    "Pairing ran for 30 minutes without success. Make sure no other phone or app is using the sensor, then try again.",
+                    comment: "Pairing failure reason when the run times out after finding sensors it could not pair with"
+                ))
         }
         scanWatchdog = watchdog
-        DispatchQueue.main.asyncAfter(deadline: .now() + G7PairingService.scanTimeout, execute: watchdog)
+        DispatchQueue.main.asyncAfter(deadline: .now() + G7PairingService.runTimeout, execute: watchdog)
         #endif
     }
 

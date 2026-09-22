@@ -335,14 +335,17 @@
     "No Sensor Readings" : {
       "comment" : "Alert title for signal loss"
     },
-    "No sensor was found in 20 minutes. Make sure the sensor is inserted and within range, and that no other phone or app is using it." : {
-      "comment" : "Pairing failure reason when the scan for a G7 sensor times out"
+    "No sensor was found in 30 minutes. Make sure the sensor is inserted and within range, and that no other phone or app is using it." : {
+      "comment" : "Pairing failure reason when the scan for a G7 sensor finds nothing at all"
     },
     "Not this sensor's code" : {
       "comment" : "Reason a G7 sensor was ruled out during pairing: its challenge response did not match the entered code"
     },
     "OK" : {
       "comment" : "Alert acknowledgment button label"
+    },
+    "Pairing ran for 30 minutes without success. Make sure no other phone or app is using the sensor, then try again." : {
+      "comment" : "Pairing failure reason when the run times out after finding sensors it could not pair with"
     },
     "Refused the connection" : {
       "comment" : "Reason a G7 sensor was ruled out during pairing: it rejected the session"
