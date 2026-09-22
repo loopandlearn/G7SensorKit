@@ -18,42 +18,47 @@ struct G7PairingSuccessView: View {
     @Environment(\.appName) private var appName
 
     var body: some View {
-        // Only the sensor is centred; the text reads from one left edge.
-        VStack(alignment: .leading, spacing: 24) {
-            Spacer()
+        // Laid out like the pairing screen this arrives from: the sensor
+        // centred at the top, the text from one left edge under it, and the
+        // way on pinned below. Centring the content instead would move the
+        // sensor as the screen replaced the one before it.
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    G7SensorHero(model: model, outcome: .succeeded)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 8)
 
-            G7SensorHero(model: model, outcome: .succeeded)
-                .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(LocalizedString("Sensor Paired", comment: "Title of the pairing success screen"))
+                            .font(.title2)
+                            .fontWeight(.semibold)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(LocalizedString("Sensor Paired", comment: "Title of the pairing success screen"))
-                    .font(.title2)
-                    .fontWeight(.semibold)
+                        if let deviceName = deviceName {
+                            Text(deviceName)
+                                .foregroundColor(.secondary)
+                        }
+                    }
 
-                if let deviceName = deviceName {
-                    Text(deviceName)
+                    Text(String(format: LocalizedString("%1$@ is now connected to the sensor directly. Readings arrive every 5 minutes; a new sensor needs about 30 minutes to warm up first.", comment: "Body of the pairing success screen (1: appName)"), appName))
                         .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(LocalizedString("Do not let a Dexcom app use this sensor from now on. A sensor works with only one app at a time.", comment: "Reminder on the pairing success screen"))
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .padding()
             }
-
-            Text(String(format: LocalizedString("%1$@ is now connected to the sensor directly. Readings arrive every 5 minutes; a new sensor needs about 30 minutes to warm up first.", comment: "Body of the pairing success screen (1: appName)"), appName))
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(LocalizedString("Do not let a Dexcom app use this sensor from now on. A sensor works with only one app at a time.", comment: "Reminder on the pairing success screen"))
-                .font(.footnote)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer()
 
             Button(action: didFinish) {
                 Text(LocalizedString("Done", comment: "Button title to finish setup"))
                     .actionButtonStyle(.primary)
             }
+            .padding([.horizontal, .bottom])
         }
-        .padding()
         .navigationBarBackButtonHidden(true)
-        .navigationBarTitle("", displayMode: .inline)
+        .navigationBarTitle(Text(LocalizedString("Paired", comment: "Navigation title of the pairing success screen")), displayMode: .inline)
     }
 }
