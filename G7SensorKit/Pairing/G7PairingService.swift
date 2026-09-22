@@ -321,7 +321,12 @@ public final class G7PairingService {
     private func startSimulatedRun() {
         scanStartedAt = Date()
         setState(.running(candidates: []))
-        let name = "DXCM" + pairingCode.suffix(2)
+        // The stand-in's model follows the code's last digit, so the art for
+        // all three products can be walked without owning all three: 0 and 3
+        // a G7, 1 and 4 a ONE+, 2 and 5 a Stelo.
+        let models = G7SensorModel.allCases
+        let model = models[(pairingCode.last?.wholeNumberValue ?? 0) % models.count]
+        let name = model.advertisedPrefix + pairingCode.suffix(2)
         let authenticate = DispatchWorkItem { [weak self] in
             guard let self = self, !self.state.isFinished else { return }
             // A stand-in ruled-out sensor too: the screen's job is to show

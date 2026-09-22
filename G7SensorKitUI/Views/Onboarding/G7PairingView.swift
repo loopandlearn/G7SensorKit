@@ -20,12 +20,17 @@ struct G7PairingView: View {
 
     @Environment(\.guidanceColors) private var guidanceColors
 
+    @State private var rowHeight = CandidateRowHeight.defaultValue
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(spacing: 24) {
-                    statusIcon
-                        .frame(height: 80)
+                // Only the sensor is centred; every line of text starts at the
+                // same left edge, which is what makes a screen of changing
+                // status readable.
+                VStack(alignment: .leading, spacing: 24) {
+                    sensorHero
+                        .frame(maxWidth: .infinity)
                         .padding(.top, 8)
 
                     status
@@ -37,8 +42,8 @@ struct G7PairingView: View {
                     if viewModel.activeCandidate != nil {
                         Text(LocalizedString("If iOS asks to pair with the sensor, tap Pair.", comment: "Hint about the system Bluetooth pairing prompt during G7 pairing"))
                             .font(.footnote)
-                            .multilineTextAlignment(.center)
                             .foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding()
@@ -56,29 +61,32 @@ struct G7PairingView: View {
 
     // MARK: - Pieces
 
-    @ViewBuilder
-    private var statusIcon: some View {
+    /// The sensor being worked on, pictured as the model it advertised itself
+    /// as, inside rings that sweep while the run is live.
+    private var sensorHero: some View {
+        G7SensorHero(model: viewModel.displayModel, isPulsing: isPulsing, outcome: outcome)
+    }
+
+    private var isPulsing: Bool {
+        viewModel.isWorking && viewModel.bluetoothProblem == nil
+    }
+
+    private var outcome: G7SensorHero.Outcome? {
         switch viewModel.state {
-        case .idle, .running:
-            ProgressView()
-                .scaleEffect(2)
         case .succeeded:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 64))
-                .foregroundColor(guidanceColors.acceptable)
+            return .succeeded
         case .failed:
-            Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 64))
-                .foregroundColor(guidanceColors.critical)
+            return .failed
+        case .idle, .running:
+            return nil
         }
     }
 
     private var status: some View {
-        VStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(viewModel.statusTitle)
                 .font(.title2)
                 .fontWeight(.semibold)
-                .multilineTextAlignment(.center)
 
             if viewModel.isWorking, let startedAt = viewModel.scanStartedAt {
                 TimelineView(.periodic(from: startedAt, by: 1)) { context in
@@ -96,7 +104,6 @@ struct G7PairingView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else if let detail = viewModel.statusDetail {
                 Text(detail)
-                    .multilineTextAlignment(.center)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -118,9 +125,48 @@ struct G7PairingView: View {
                 .foregroundColor(.secondary)
                 .padding(.leading, 4)
 
-            ForEach(viewModel.candidates) { candidate in
-                candidateRow(candidate)
+            // Three at a time, the rest behind a scroll: a drawer of spent
+            // applicators all advertise, and an unbounded list would push the
+            // status and the way out off the screen.
+            ScrollView {
+                VStack(spacing: G7PairingView.rowSpacing) {
+                    ForEach(viewModel.displayCandidates) { candidate in
+                        candidateRow(candidate)
+                            .background(
+                                GeometryReader { proxy in
+                                    Color.clear.preference(key: CandidateRowHeight.self, value: proxy.size.height)
+                                }
+                            )
+                    }
+                }
             }
+            .frame(height: listHeight)
+            .onPreferenceChange(CandidateRowHeight.self) { height in
+                if height > 0 {
+                    rowHeight = height
+                }
+            }
+        }
+    }
+
+    private static let rowSpacing: CGFloat = 8
+    /// How many rows are on screen before the list starts scrolling.
+    private static let visibleRows = 3
+
+    /// Sized from a measured row rather than a constant, so the list still
+    /// shows three whole rows at any Dynamic Type size.
+    private var listHeight: CGFloat {
+        let rows = CGFloat(min(viewModel.candidates.count, G7PairingView.visibleRows))
+        return rows * rowHeight + max(0, rows - 1) * G7PairingView.rowSpacing
+    }
+
+    /// The tallest row on screen. Seeded with the height of a row at the
+    /// default text size so the first frame is not a collapsed list.
+    private struct CandidateRowHeight: PreferenceKey {
+        static let defaultValue: CGFloat = 58
+
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
         }
     }
 
@@ -145,13 +191,13 @@ struct G7PairingView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.model?.displayName ?? candidate.name)
                     .font(.subheadline.weight(.medium))
-                Text(String(
-                    format: LocalizedString("%1$@ · %2$@", comment: "A discovered sensor's advertised name and its pairing status (1: name, 2: status)"),
-                    candidate.name,
-                    viewModel.detail(for: candidate)
-                ))
-                .font(.caption)
-                .foregroundColor(.secondary)
+                // Built here rather than from a localized format: the pieces
+                // are already translated and a separator is not a sentence,
+                // so sending "%1$@ · %2$@" out for translation only invites
+                // a broken format string back.
+                Text("\(candidate.name) · \(viewModel.detail(for: candidate))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             Spacer(minLength: 8)
@@ -179,8 +225,10 @@ struct G7PairingView: View {
             Image(systemName: "xmark.circle.fill")
                 .foregroundColor(.secondary)
         case .paired:
+            // Green, not `guidanceColors.acceptable`: hosts map that to
+            // `.primary` (Trio does), which would show a black tick.
             Image(systemName: "checkmark.circle.fill")
-                .foregroundColor(guidanceColors.acceptable)
+                .foregroundColor(.green)
         }
     }
 

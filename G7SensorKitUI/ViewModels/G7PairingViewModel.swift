@@ -27,7 +27,7 @@ final class G7PairingViewModel: ObservableObject {
     private let excludedPeripheral: UUID?
 
     private let service: G7PairingService
-    private let onSuccess: (_ peripheralIdentifier: UUID, _ sharedKey: Data, _ deviceName: String?, _ handoff: G7PairingHandoff?) -> Void
+    private let onSuccess: (_ peripheralIdentifier: UUID, _ sharedKey: Data, _ deviceName: String?, _ model: G7SensorModel, _ handoff: G7PairingHandoff?) -> Void
     private let onLog: ((String) -> Void)?
 
     /// - Parameter cgmManager: the manager being re-paired, if any. Its
@@ -37,7 +37,7 @@ final class G7PairingViewModel: ObservableObject {
         serial: String?,
         cgmManager: G7CGMManager?,
         onLog: ((String) -> Void)? = nil,
-        onSuccess: @escaping (_ peripheralIdentifier: UUID, _ sharedKey: Data, _ deviceName: String?, _ handoff: G7PairingHandoff?) -> Void
+        onSuccess: @escaping (_ peripheralIdentifier: UUID, _ sharedKey: Data, _ deviceName: String?, _ model: G7SensorModel, _ handoff: G7PairingHandoff?) -> Void
     ) {
         self.pairingCode = pairingCode
         // The sensor a session already holds is not the one being replaced;
@@ -62,7 +62,7 @@ final class G7PairingViewModel: ObservableObject {
                 self.candidates = candidates
             }
             if case .succeeded(let peripheralIdentifier, let sharedKey, let deviceName) = state {
-                self.onSuccess(peripheralIdentifier, sharedKey, deviceName, self.service.handOff())
+                self.onSuccess(peripheralIdentifier, sharedKey, deviceName, self.pairedModel, self.service.handOff())
             }
         }
     }
@@ -87,6 +87,33 @@ final class G7PairingViewModel: ObservableObject {
     /// The sensor being worked on right now, if any.
     var activeCandidate: G7PairingCandidate? {
         candidates.first { $0.status.isActive }
+    }
+
+    /// The candidates in reading order, newest activity first: what pairing is
+    /// doing now, then what it will try next, then the sensors it has ruled
+    /// out with the most recent verdict first. `candidates` keeps the order
+    /// the run tries them in, which puts the settled ones at the top; that is
+    /// the right order for the planner and the wrong one for someone watching.
+    var displayCandidates: [G7PairingCandidate] {
+        let current = candidates.filter { $0.status.isActive || $0.status == .paired }
+        let waiting = candidates.filter { $0.status == .waiting }
+        let ruledOut = candidates.filter { $0.status.ruleOutReason != nil }
+        return current + waiting + ruledOut.reversed()
+    }
+
+    /// Which product to picture: the sensor under trial, or the most recent
+    /// one heard from before that. G7 until one of them says otherwise, since
+    /// the screen has to show something while the scan is still empty.
+    var displayModel: G7SensorModel {
+        activeCandidate?.model ?? candidates.last(where: { $0.model != nil })?.model ?? .g7
+    }
+
+    /// The model that paired, from the advertised name of the sensor that
+    /// answered. The session only learns the sensor's identity from its first
+    /// reading, minutes later, so the pairing run is the only thing that knows
+    /// it in time for the screen that follows.
+    var pairedModel: G7SensorModel {
+        candidates.first { $0.status == .paired }?.model ?? displayModel
     }
 
     /// Why pairing cannot make progress right now, if the radio is the reason.
