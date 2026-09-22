@@ -40,7 +40,7 @@ struct G7PairingSuccessView: View {
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text(LocalizedString("Do not install or use the Dexcom G7 app with this sensor.", comment: "Reminder on the pairing success screen"))
+            Text(LocalizedString("Do not let a Dexcom app use this sensor from now on. A sensor works with only one app at a time.", comment: "Reminder on the pairing success screen"))
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

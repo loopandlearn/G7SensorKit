@@ -594,7 +594,7 @@ public final class G7PairingService {
         report("\(blocker.name) has advertised its display slot as taken \(blocker.heldSlotCycles) times; giving up")
         fail(String(
             format: LocalizedString(
-                "%1$@ reports that another display is connected to it, and no other sensor in range accepted this pairing code. A sensor works with one app at a time: close or delete the Dexcom app, or stop the other phone or receiver using this sensor, then try again.",
+                "%1$@ says another display is connected to it, and no other sensor here took this code. Stop the Dexcom app from using it: delete it, turn off its Bluetooth, or force quit it. Then try again.",
                 comment: "Pairing failure reason when the only remaining sensor keeps advertising its display slot as taken (1: sensor name)"
             ),
             blocker.name

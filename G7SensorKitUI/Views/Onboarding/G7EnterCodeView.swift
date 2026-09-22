@@ -158,9 +158,10 @@ struct G7EnterCodeView: View {
     private var manualEntryDivider: some View {
         HStack(spacing: 12) {
             line
-            Text(LocalizedString("or enter the code by hand", comment: "Separator between scanning the applicator and typing the pairing code"))
+            Text(LocalizedString("or enter it by hand", comment: "Separator between scanning the applicator and typing the pairing code"))
                 .font(.footnote)
                 .foregroundColor(.secondary)
+                .fixedSize()
             line
         }
     }
