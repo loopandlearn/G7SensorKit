@@ -247,6 +247,60 @@ class G7PairingPlannerTests: XCTestCase {
         XCTAssertEqual(planner.heldSlotBlocker?.id, a)
     }
 
+    /// Two busy sensors, one of which may be the one the code belongs to.
+    /// The run must not give up while either still has a turn owed.
+    func testEveryStuckSensorGetsALastTurn() {
+        var planner = G7PairingPlanner()
+        let start = Date()
+        planner.addCandidate(id: a, name: "busy1", isPhoneSlotHeld: true)
+        planner.addCandidate(id: b, name: "busy2", isPhoneSlotHeld: true)
+        _ = planner.ruleOutCurrent(.inUseElsewhere)
+        _ = planner.ruleOutCurrent(.inUseElsewhere)
+
+        for cycle in 0 ..< G7PairingPlanner.heldSlotCyclesBeforeGivingUp {
+            let at = start + Double(cycle) * 300
+            planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: at)
+            planner.recordAdvertisement(id: b, isPhoneSlotHeld: true, at: at)
+        }
+
+        XCTAssertTrue(planner.admitBlockerForFinalAttempt())
+        let first = planner.currentCandidate?.id
+        _ = planner.ruleOutCurrent(.inUseElsewhere)
+        XCTAssertNil(planner.heldSlotBlocker, "gave up with the other sensor still owed a turn")
+
+        XCTAssertTrue(planner.admitBlockerForFinalAttempt())
+        XCTAssertNotEqual(planner.currentCandidate?.id, first, "gave the same sensor two last turns")
+        _ = planner.ruleOutCurrent(.inUseElsewhere)
+
+        XCTAssertNotNil(planner.heldSlotBlocker)
+        XCTAssertEqual(planner.heldSlotBlockerCount, 2)
+        XCTAssertFalse(planner.admitBlockerForFinalAttempt())
+    }
+
+    /// A sensor that answered still counts itself out, so it neither earns a
+    /// last turn nor holds the run open.
+    func testASensorThatRejectedTheCodeNeitherBlocksNorGetsALastTurn() {
+        var planner = G7PairingPlanner()
+        let start = Date()
+        planner.addCandidate(id: a, name: "busy", isPhoneSlotHeld: true)
+        planner.addCandidate(id: b, name: "wrong", isPhoneSlotHeld: true)
+        _ = planner.ruleOutCurrent(.inUseElsewhere)
+        _ = planner.ruleOutCurrent(.wrongPairingCode)
+
+        for cycle in 0 ..< G7PairingPlanner.heldSlotCyclesBeforeGivingUp {
+            let at = start + Double(cycle) * 300
+            planner.recordAdvertisement(id: a, isPhoneSlotHeld: true, at: at)
+            planner.recordAdvertisement(id: b, isPhoneSlotHeld: true, at: at)
+        }
+
+        XCTAssertTrue(planner.admitBlockerForFinalAttempt())
+        XCTAssertEqual(planner.currentCandidate?.id, a)
+        _ = planner.ruleOutCurrent(.inUseElsewhere)
+
+        XCTAssertEqual(planner.heldSlotBlocker?.id, a)
+        XCTAssertEqual(planner.heldSlotBlockerCount, 1, "the sensor that answered is not holding anything up")
+    }
+
     func testTheLastTurnIsOnlyOfferedOnce() {
         var planner = G7PairingPlanner()
         let start = Date()

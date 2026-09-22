@@ -660,7 +660,20 @@ public final class G7PairingService {
         guard let blocker = planner.heldSlotBlocker else {
             return
         }
-        report("\(blocker.name) would not pair on a last attempt, with its display slot still taken; giving up")
+        let stuck = planner.heldSlotBlockerCount
+        report("\(blocker.name) would not pair on a last attempt, with its display slot still taken; giving up (\(stuck) sensor\(stuck == 1 ? "" : "s") holding the run up)")
+        guard stuck == 1 else {
+            // Naming one of several would send the user to stop the wrong
+            // thing. Say how many instead.
+            fail(String(
+                format: LocalizedString(
+                    "%1$d sensors here say another display is connected to them, and no other sensor took this code. Stop the Dexcom app from using them: delete it, turn off its Bluetooth, or force quit it. Then try again.",
+                    comment: "Pairing failure reason when several sensors keep advertising their display slot as taken (1: how many sensors)"
+                ),
+                stuck
+            ))
+            return
+        }
         fail(String(
             format: LocalizedString(
                 "%1$@ says another display is connected to it, and no other sensor here took this code. Stop the Dexcom app from using it: delete it, turn off its Bluetooth, or force quit it. Then try again.",

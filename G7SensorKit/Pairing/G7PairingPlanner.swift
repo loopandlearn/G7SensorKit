@@ -267,30 +267,44 @@ struct G7PairingPlanner {
     ///
     /// Only a candidate that has already had its final attempt qualifies.
     /// Until then it is a sensor owed one more turn, not a blocker.
+    /// Every one of them has to have had it: a busy sensor is one we never
+    /// got an answer out of, so with two in the room either could be the one
+    /// the code belongs to.
     var heldSlotBlocker: G7PairingCandidate? {
-        blockingCandidate.flatMap { $0.hasHadFinalAttempt ? $0 : nil }
+        let stuck = stuckCandidates
+        guard !stuck.isEmpty, stuck.allSatisfy(\.hasHadFinalAttempt) else {
+            return nil
+        }
+        return stuck.max { $0.heldSlotCycles < $1.heldSlotCycles }
     }
 
-    /// The sensor the run is stuck behind, whether or not it has had its
-    /// last turn yet.
-    private var blockingCandidate: G7PairingCandidate? {
+    /// How many sensors are holding the run up. More than one, and the
+    /// message can only name the worst of them.
+    var heldSlotBlockerCount: Int {
+        heldSlotBlocker == nil ? 0 : stuckCandidates.count
+    }
+
+    /// Every sensor the run could be stuck behind, whether or not each has
+    /// had its last turn yet.
+    private var stuckCandidates: [G7PairingCandidate] {
         guard !candidates.isEmpty,
               candidates.allSatisfy({ $0.status.ruleOutReason != nil })
         else {
-            return nil
+            return []
         }
-        return candidates
-            .filter { $0.status.ruleOutReason != .wrongPairingCode }
-            .max { $0.heldSlotCycles < $1.heldSlotCycles }
-            .flatMap { $0.heldSlotCycles >= G7PairingPlanner.heldSlotCyclesBeforeGivingUp ? $0 : nil }
+        return candidates.filter {
+            $0.status.ruleOutReason != .wrongPairingCode
+                && $0.heldSlotCycles >= G7PairingPlanner.heldSlotCyclesBeforeGivingUp
+        }
     }
 
-    /// Gives the sensor the run is stuck behind one turn before the run gives
-    /// up on it, and reports whether it took one.
+    /// Gives a sensor the run is stuck behind one turn before the run gives
+    /// up on it, and reports whether one took it. Called until it says no, so
+    /// every stuck sensor gets a turn.
     ///
     /// Everything else about a busy sensor is read off its advertisement, and
-    /// the run's most alarming message — go and stop whatever else is using
-    /// this sensor — would otherwise rest on that one bit, last checked
+    /// the run's most alarming message, go and stop whatever else is using
+    /// this sensor, would otherwise rest on that one bit. It was last checked
     /// against the sensor itself twenty minutes earlier, when the lease was
     /// certainly still alive. By now it cannot be. So try, whatever the
     /// advertisement says: either the sensor pairs and the advertisement was
@@ -302,9 +316,8 @@ struct G7PairingPlanner {
     /// the sensor's own four-rejection cooldown, and a run that got here has
     /// spent one rejection on this sensor rather than four.
     mutating func admitBlockerForFinalAttempt() -> Bool {
-        guard let blocker = blockingCandidate,
-              !blocker.hasHadFinalAttempt,
-              let index = candidates.firstIndex(where: { $0.id == blocker.id })
+        guard let next = stuckCandidates.first(where: { !$0.hasHadFinalAttempt }),
+              let index = candidates.firstIndex(where: { $0.id == next.id })
         else {
             return false
         }

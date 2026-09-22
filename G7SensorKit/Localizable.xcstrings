@@ -7,6 +7,9 @@
     "%1$@ says another display is connected to it, and no other sensor here took this code. Stop the Dexcom app from using it: delete it, turn off its Bluetooth, or force quit it. Then try again." : {
       "comment" : "Pairing failure reason when the only remaining sensor keeps advertising its display slot as taken (1: sensor name)"
     },
+    "%1$d sensors here say another display is connected to them, and no other sensor took this code. Stop the Dexcom app from using them: delete it, turn off its Bluetooth, or force quit it. Then try again." : {
+      "comment" : "Pairing failure reason when several sensors keep advertising their display slot as taken (1: how many sensors)"
+    },
     "Dexcom G7" : {
       "comment" : "CGM display title",
       "localizations" : {
