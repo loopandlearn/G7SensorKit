@@ -21,6 +21,12 @@
             "value" : ""
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ""
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "new",
@@ -153,6 +159,12 @@
           }
         },
         "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "– – –"
+          }
+        },
+        "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "– – –"
@@ -307,6 +319,12 @@
             "value" : "%1$@ kann Dexcom G7 CGM-Daten lesen, aber Du musst trotzdem die Dexcom G7 App für die Kopplung, Kalibrierung und andere Sensorverwaltung verwenden."
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ can read G7 CGM data, but you must still use the Dexcom G7 App for pairing, calibration, and other sensor management."
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -447,6 +465,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bist Du sicher, dass Du dieses CGM löschen möchtest?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Are you sure you want to delete this CGM?"
           }
         },
         "es" : {
@@ -598,6 +622,12 @@
           }
         },
         "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bluetooth"
+          }
+        },
+        "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bluetooth"
@@ -758,6 +788,12 @@
             "value" : "Abbrechen"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -904,6 +940,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Konfiguration"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Configuration"
           }
         },
         "es" : {
@@ -1055,6 +1097,12 @@
             "value" : "Verbunden"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connected"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1204,6 +1252,12 @@
             "value" : "Verbinden"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecting"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1347,6 +1401,12 @@
             "value" : "Fortsetzen"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1488,6 +1548,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "CGM löschen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete CGM"
           }
         },
         "es" : {
@@ -1651,6 +1717,12 @@
             "value" : "Dexcom G7"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dexcom G7"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1791,6 +1863,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fertig"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
           }
         },
         "es" : {
@@ -1946,6 +2024,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Blutzucker"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glucose"
           }
         },
         "es" : {
@@ -2109,6 +2193,12 @@
             "value" : "Ende der Toleranzzeit"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grace Period End"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2166,7 +2256,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Einde Verlenging"
+            "value" : "Einde verlenging"
           }
         },
         "pl" : {
@@ -2262,6 +2352,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verbleibende Toleranzzeit"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grace period remaining"
           }
         },
         "es" : {
@@ -2407,6 +2503,12 @@
             "value" : "HOCH"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HIGH"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2529,6 +2631,17 @@
         }
       }
     },
+    "Key" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Key"
+          }
+        }
+      }
+    },
     "Last Connect" : {
       "comment" : "title for g7 settings row showing sensor last connect time",
       "localizations" : {
@@ -2548,6 +2661,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Letzte Verbindung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last Connect"
           }
         },
         "es" : {
@@ -2696,6 +2815,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Letzter Wert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Last Reading"
           }
         },
         "es" : {
@@ -2847,6 +2972,12 @@
             "value" : "NIEDRIG"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LOW"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -2991,6 +3122,12 @@
           }
         },
         "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name"
+          }
+        },
+        "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Name"
@@ -3151,6 +3288,12 @@
             "value" : "Open Dexcom App"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Dexcom App"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3297,6 +3440,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nach neuem Sensor suchen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scan for new sensor"
           }
         },
         "es" : {
@@ -3448,6 +3597,12 @@
             "value" : "Scannt"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanning"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3591,6 +3746,12 @@
             "value" : "Suche nach\nSensor"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searching for\nSensor"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3642,7 +3803,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zoekt naar\nSensor"
+            "value" : "Zoekt naar\nsensor"
           }
         },
         "pl" : {
@@ -3732,6 +3893,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Suche nach Sensor"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Searching for sensor"
           }
         },
         "es" : {
@@ -3877,6 +4044,12 @@
             "value" : "Sensor\nabgelaufen"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor\nExpired"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -3928,7 +4101,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sensor\nVerlopen"
+            "value" : "Sensor\nverlopen"
           }
         },
         "pl" : {
@@ -4020,6 +4193,12 @@
             "value" : "Sensorfehler"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor\nFailed"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4071,7 +4250,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sensor\nMislukt"
+            "value" : "Sensor\nmislukt"
           }
         },
         "pl" : {
@@ -4161,6 +4340,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sensor\nProblem"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor\nIssue"
           }
         },
         "es" : {
@@ -4306,6 +4491,12 @@
             "value" : "Sensor\nAufwärmphase"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor\nWarmup"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4449,6 +4640,12 @@
             "value" : "Sensor-Ablaufzeitpunkt"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor Expiration"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -4506,7 +4703,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sensor Vervaldatum "
+            "value" : "Sensor vervaldatum "
           }
         },
         "pl" : {
@@ -4602,6 +4799,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sensor abgelaufen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor expired"
           }
         },
         "es" : {
@@ -4745,6 +4948,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sensor läuft ab"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor expires"
           }
         },
         "es" : {
@@ -4902,6 +5111,12 @@
             "value" : "Sensorfehler"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor failed"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5043,6 +5258,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sensor gestartet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor Start"
           }
         },
         "es" : {
@@ -5194,6 +5415,12 @@
             "value" : "Signalverlust"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signal\nLoss"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5335,6 +5562,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zeit"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Time"
           }
         },
         "es" : {
@@ -5481,6 +5714,12 @@
           }
         },
         "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trend"
+          }
+        },
+        "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Trend"
@@ -5641,6 +5880,12 @@
             "value" : "Werte hochladen"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upload Readings"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -5698,7 +5943,7 @@
         "nl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Upload Metingen"
+            "value" : "Upload metingen"
           }
         },
         "pl" : {
@@ -5788,6 +6033,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aufwärmen abgeschlossen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warmup completes"
           }
         },
         "es" : {
