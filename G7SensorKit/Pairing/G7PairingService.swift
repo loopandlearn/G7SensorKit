@@ -498,10 +498,18 @@ public final class G7PairingService {
         }
         switch error {
         case .challengeMismatch:
-            // Proof that this sensor does not belong to the entered code.
+            // Our own verification failing, not the sensor's verdict: it
+            // answered, and the answer was not one our key produces. A busy
+            // sensor answers exactly the same way, which is what
+            // `settledReason` is for.
             return .wrongPairingCode
         case .rejected(_, let failureCode):
-            // Terminal for this sensor, and retrying invites the lockout.
+            // The sensor refusing outright, with a reason. Never yet seen on
+            // the air: across every capture, a sensor that will not take us
+            // answers the challenge and lets our own check fail rather than
+            // sending a verdict of `authStatus == 0x2`. Kept because the
+            // protocol defines it and a refusal we did not handle would be
+            // retried straight into the lockout.
             switch failureCode {
             case .challengeMismatch?:
                 return .wrongPairingCode
@@ -515,6 +523,48 @@ public final class G7PairingService {
         }
     }
 
+    /// Second-guesses a verdict of "wrong code" against what the sensor was
+    /// saying before we connected.
+    ///
+    /// A sensor whose display slot is already taken completes the key
+    /// exchange and then answers the challenge with something our key did not
+    /// produce — byte for byte what a sensor belonging to a different code
+    /// does. This is measured, not assumed. A capture of a pairing run
+    /// against a sensor the Dexcom app was holding, with the right code
+    /// entered, has both exchanges on one link three and a half seconds
+    /// apart: the app's `02` request answered and verified through to
+    /// `05 01 01`, then ours answered with something that did not verify.
+    /// iOS gives both apps the same connection, so there is no doubt it is
+    /// the same sensor in the same state.
+    ///
+    /// The explanation that fits is a key per display slot: the slot's key
+    /// belongs to whoever holds it, so the sensor answers our nonce under a
+    /// key we were never given. "Does not match our key" is then literally
+    /// true and says nothing whatever about the code that was typed.
+    ///
+    /// So the handshake cannot tell the two apart and no amount of care with
+    /// it will. The advertisement can, and of the two, telling someone the
+    /// code they just read off the applicator is wrong is much the worse one
+    /// to get wrong.
+    private func settledReason(_ reason: G7PairingRuleOutReason) -> G7PairingRuleOutReason {
+        guard reason == .wrongPairingCode,
+              planner.currentCandidate?.wasHeldByAnotherDisplay == true
+        else {
+            return reason
+        }
+        return .inUseElsewhere
+    }
+
+    /// Republishes which sensors the scan turns away.
+    ///
+    /// A ruled-out sensor's advertisements are ignored: reconnecting to it
+    /// costs the next candidate its turn, and a fourth rejection would put it
+    /// into a connection-refusing cooldown. Re-admitting one takes it off the
+    /// list again, so this is read from the planner rather than accumulated.
+    private func syncRuledOutIdentifiers() {
+        ruledOutIdentifiers.value = Set(planner.candidates.filter { $0.status.ruleOutReason != nil }.map(\.id))
+    }
+
     private func handleCandidateFailure(error: Error? = nil) {
         // Whatever happens next starts its own connect deadline; a leftover
         // one would only be in the way of arming it.
@@ -523,7 +573,7 @@ public final class G7PairingService {
         let candidateID = planner.currentCandidate?.id
         let action: G7PairingPlanner.Action
         if let reason = ruleOutReason(for: error) {
-            action = planner.ruleOutCurrent(reason)
+            action = planner.ruleOutCurrent(settledReason(reason))
         } else {
             action = planner.recordFailure()
         }
@@ -531,10 +581,7 @@ public final class G7PairingService {
            let reason = candidate.status.ruleOutReason {
             report("\(candidate.name) ruled out: \(reason.localizedDescription)")
         }
-        // A ruled-out sensor's advertisements are turned away from here on:
-        // reconnecting to it costs the next candidate its turn, and a fourth
-        // rejection would put it into a connection-refusing cooldown.
-        ruledOutIdentifiers.value = Set(planner.candidates.filter { $0.status.ruleOutReason != nil }.map(\.id))
+        syncRuledOutIdentifiers()
         publishProgress()
 
         switch action {
@@ -588,10 +635,28 @@ public final class G7PairingService {
     /// the user is told what to go and stop rather than left watching a
     /// timer run out.
     private func failIfHeldSlotBlocksTheRun() {
-        guard isRunActive, let blocker = planner.heldSlotBlocker else {
+        guard isRunActive else {
             return
         }
-        report("\(blocker.name) has advertised its display slot as taken \(blocker.heldSlotCycles) times; giving up")
+
+        // Before believing the advertisement, ask the sensor. It has said its
+        // slot is taken for longer than a lease can last, so if that is still
+        // true it will refuse us, and if it is not we pair.
+        if planner.admitBlockerForFinalAttempt() {
+            if let candidate = planner.currentCandidate {
+                report("\(candidate.name) has said its slot is taken past any lease; trying it once more before giving up")
+            }
+            syncRuledOutIdentifiers()
+            publishProgress()
+            bluetoothManager?.scanForPeripheral()
+            armCandidateWatchdog()
+            return
+        }
+
+        guard let blocker = planner.heldSlotBlocker else {
+            return
+        }
+        report("\(blocker.name) would not pair on a last attempt, with its display slot still taken; giving up")
         fail(String(
             format: LocalizedString(
                 "%1$@ says another display is connected to it, and no other sensor here took this code. Stop the Dexcom app from using it: delete it, turn off its Bluetooth, or force quit it. Then try again.",
@@ -647,18 +712,29 @@ extension G7PairingService: G7BluetoothManagerDelegate {
 
         onMain { [weak self] in
             guard let self = self, self.isRunActive else { return }
-            let isHeld = advertisement.isSlotHeld(for: displayType) ?? false
+            // Nil means the packet did not carry the types-in-use byte. It
+            // stands in for free only at discovery, where it decides nothing
+            // but the order candidates are tried in; from then on an
+            // unreadable advertisement says nothing and changes nothing.
+            let slot = advertisement.isSlotHeld(for: displayType)
+            let isHeld = slot ?? false
             if self.planner.addCandidate(id: id, name: advertisement.name, isPhoneSlotHeld: isHeld) {
                 self.report(isHeld
                     ? "Found \(advertisement.name); another phone connected recently, so trying others first"
                     : "Found \(advertisement.name)")
-                self.planner.recordAdvertisement(id: id, isPhoneSlotHeld: isHeld)
+                self.planner.recordAdvertisement(id: id, isPhoneSlotHeld: slot)
                 self.publishProgress()
             } else {
-                let wasHeld = self.planner.candidates.first { $0.id == id }?.isPhoneSlotHeld
-                if self.planner.recordAdvertisement(id: id, isPhoneSlotHeld: isHeld) {
-                    if wasHeld != isHeld {
-                        self.report("\(advertisement.name) slot is now \(isHeld ? "held" : "free")")
+                let before = self.planner.candidates.first { $0.id == id }
+                if self.planner.recordAdvertisement(id: id, isPhoneSlotHeld: slot) {
+                    let after = self.planner.candidates.first { $0.id == id }
+                    if let after = after, after.readmissions != before?.readmissions {
+                        self.report("\(advertisement.name) says its slot is free again; giving it another turn (\(after.readmissions) of \(G7PairingPlanner.maximumReadmissions))")
+                        // It is no longer turned away at the door, so the
+                        // next advertisement from it is connected to.
+                        self.syncRuledOutIdentifiers()
+                    } else if let slot = slot, before?.isPhoneSlotHeld != slot {
+                        self.report("\(advertisement.name) slot is now \(slot ? "held" : "free")")
                     }
                     self.publishProgress()
                 }
@@ -693,6 +769,12 @@ extension G7PairingService: G7BluetoothManagerDelegate {
         log.default("Candidate connection failed: %{public}@", String(describing: error))
         onMain { [weak self] in
             guard let self = self, self.isRunActive, !self.authenticationInFlight else { return }
+            // Reported, because this spends one of the sensor's attempts. An
+            // unreported one turns the log into "attempt 1" followed by
+            // "attempt 3", with nothing to say where 2 went.
+            if let candidate = self.planner.currentCandidate {
+                self.report("\(candidate.name) could not be connected: \(error)")
+            }
             self.handleCandidateFailure()
         }
     }
@@ -710,6 +792,9 @@ extension G7PairingService: G7BluetoothManagerDelegate {
                 // earlier in the handshake ends in its step timeout instead.
                 self.report("Link dropped during the handshake; waiting for the handshake's verdict")
                 return
+            }
+            if let candidate = self.planner.currentCandidate {
+                self.report("\(candidate.name) dropped the link before the handshake")
             }
             self.handleCandidateFailure()
         }
