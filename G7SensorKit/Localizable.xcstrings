@@ -28,6 +28,12 @@
             "value" : "Dexcom G7"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dexcom G7"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -175,6 +181,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Blutzuckerdaten sind nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glucose data is unavailable"
           }
         },
         "es" : {
@@ -332,6 +344,12 @@
             "value" : "Sensor abgelaufen"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor expired"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -481,6 +499,12 @@
             "value" : "Sensor defekt"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor failed"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -628,6 +652,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sensor befindet sich in unbekanntem Zustand %1$d"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor is in unknown state %1$d"
           }
         },
         "es" : {
@@ -785,6 +815,12 @@
             "value" : "Sensor ist OK"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor is OK"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -932,6 +968,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sensor ist gestoppt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor is stopped"
           }
         },
         "es" : {
@@ -1087,6 +1129,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sensor befindet sich in der Aufwärmphase"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensor is warming up"
           }
         },
         "es" : {
