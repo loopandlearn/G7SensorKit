@@ -69,6 +69,11 @@ public class G7CGMManager: CGMManager {
     }
     private let lockedState: Locked<G7CGMManagerState>
 
+    /// Whether this run has taken back a signal-loss alert that an earlier
+    /// build may have left scheduled. Done on the first reading, when the
+    /// delegate is known to be set.
+    private var didRetractLegacySignalLoss = false
+
     /// Sends readings to Dexcom Share while an account is signed in.
     private var shareUploader: G7ShareUploader?
 
@@ -371,6 +376,34 @@ public class G7CGMManager: CGMManager {
         }
     }
 
+    /// Goes back to reading through the Dexcom app's session with the same
+    /// sensor. The stored key is dropped, so the Dexcom app's pairing takes
+    /// the phone's slot; the pairing code is kept for switching back. Loop
+    /// stops uploading to Dexcom Share while the Dexcom app does it.
+    public func switchToDexcomAppMode() {
+        guard state.sessionMode == .direct else { return }
+        logDeviceCommunication("Switching to the Dexcom app's session; dropping the stored key and the connection", type: .connection)
+        cancelSuspectedSessionEndScan()
+        let newState = mutateState { state in
+            state.sessionMode = .eavesdropping
+            state.sharedKey = nil
+            state.lastAuthenticationFailure = nil
+            state.lastAuthenticationFailureDate = nil
+            // What the direct session learned about the sensor goes with it;
+            // the Dexcom app's session reports its own once it is up.
+            state.pairedAt = nil
+            state.transmitterVersion = nil
+            state.extendedVersion = nil
+            state.calibration = nil
+            state.calibrationBounds = nil
+            state.calibrationBoundsDate = nil
+        }
+        sensor.dropConnection()
+        sensor.reconfigure(mode: .eavesdropping, credentials: newState.sensorCredentials)
+        sensor.latestReadingDate = newState.latestReadingTimestamp
+        sensor.resumeScanning()
+    }
+
     public var rawState: RawStateValue {
         return state.rawValue
     }
@@ -600,14 +633,6 @@ extension G7CGMManager {
         }
     }
 
-    /// Arms the signal-loss alert to fire if no further reading arrives in
-    /// time. Called on every reading, so it keeps being pushed back while
-    /// readings flow and only ever fires after they stop.
-    private func rearmSignalLossAlert() {
-        retractLifecycleAlert(.signalLoss)
-        issueLifecycleAlert(.signalLoss, trigger: .delayed(interval: G7LifecycleAlert.signalLossInterval))
-    }
-
     private func raiseSensorFailedAlertIfNeeded(for message: G7GlucoseMessage) {
         guard message.algorithmState.sensorFailed, let sensorID = state.sensorID,
               state.sensorFailedAlertIssuedFor != sensorID
@@ -615,8 +640,6 @@ extension G7CGMManager {
             return
         }
         issueLifecycleAlert(.sensorFailed)
-        // A failed sensor will not send more readings; nothing to lose signal from.
-        retractLifecycleAlert(.signalLoss)
         mutateState { state in
             state.sensorFailedAlertIssuedFor = sensorID
             state.sensorFailureMessage = String(describing: message.algorithmState)
@@ -715,7 +738,13 @@ extension G7CGMManager: G7SensorDelegate {
 
     /// A client for the signed-in account, for managing followers.
     public var shareClient: G7ShareClient? {
-        G7ShareCredentialStore().load().map { G7ShareClient(credentials: $0) }
+        G7ShareCredentialStore().load().map { credentials in
+            let client = G7ShareClient(credentials: credentials)
+            client.logHandler = { [weak self] message in
+                self?.logDeviceCommunication("Dexcom Share: " + message, type: .connection)
+            }
+            return client
+        }
     }
 
     /// Verifies the credentials with the service, keeps them, and starts
@@ -752,7 +781,11 @@ extension G7CGMManager: G7SensorDelegate {
     }
 
     private func startShareUploader(credentials: G7ShareCredentials, uploadedThrough: Date?, client: G7ShareClient? = nil) {
-        let uploader = G7ShareUploader(client: client ?? G7ShareClient(credentials: credentials), uploadedThrough: uploadedThrough)
+        let shareClient = client ?? G7ShareClient(credentials: credentials)
+        shareClient.logHandler = { [weak self] message in
+            self?.logDeviceCommunication("Dexcom Share: " + message, type: .connection)
+        }
+        let uploader = G7ShareUploader(client: shareClient, uploadedThrough: uploadedThrough)
         uploader.serial = state.transmitterVersion?.serialNumberString
         uploader.onLog = { [weak self] message in
             self?.logDeviceCommunication(message, type: .connection)
@@ -980,7 +1013,10 @@ extension G7CGMManager: G7SensorDelegate {
             }
             retractLifecycleAlert(.connectionRefused)
         }
-        rearmSignalLossAlert()
+        if !didRetractLegacySignalLoss {
+            didRetractLegacySignalLoss = true
+            retractLifecycleAlert(.signalLoss)
+        }
         raiseSensorFailedAlertIfNeeded(for: message)
 
         // Receiving any glucose message proves the session is still active.
@@ -1030,7 +1066,8 @@ extension G7CGMManager: G7SensorDelegate {
         let unit = HKUnit.milligramsPerDeciliter
         let quantity = HKQuantity(unit: unit, doubleValue: Double(min(max(glucose, GlucoseLimits.minimum), GlucoseLimits.maximum)))
 
-        if !message.glucoseIsDisplayOnly {
+        // While eavesdropping the Dexcom app uploads the readings itself.
+        if !message.glucoseIsDisplayOnly, state.sessionMode == .direct {
             shareUploader?.enqueue([G7ShareReading(date: latestReadingTimestamp, glucose: Int(glucose), trend: message.trendType)])
         }
 
@@ -1080,7 +1117,6 @@ extension G7CGMManager: G7SensorDelegate {
                 mutateState { state in
                     state.latestReadingTimestamp = newestDate
                 }
-                rearmSignalLossAlert()
             }
         }
 
@@ -1111,10 +1147,12 @@ extension G7CGMManager: G7SensorDelegate {
             )
         }
 
-        shareUploader?.enqueue(backfill.compactMap { entry in
+        if state.sessionMode == .direct {
+            shareUploader?.enqueue(backfill.compactMap { entry in
             guard let glucose = entry.glucose, entry.hasReliableGlucose, !entry.glucoseIsDisplayOnly else { return nil }
             return G7ShareReading(date: activationDate.addingTimeInterval(TimeInterval(entry.timestamp)), glucose: Int(glucose), trend: entry.trendType)
         })
+        }
 
         updateDelegate(with: .newData(samples))
     }

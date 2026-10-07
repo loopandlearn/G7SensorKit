@@ -43,7 +43,6 @@ struct G7AlertsFromLoopView: View {
                         LocalizedString("Sensor expiring, 24 hours and again 2 hours before", comment: "Sensor alert list item: expiring"),
                         LocalizedString("Sensor expired and session ended", comment: "Sensor alert list item: expired"),
                         LocalizedString("Sensor failed", comment: "Sensor alert list item: failed"),
-                        LocalizedString("Signal loss, after 20 minutes without a reading", comment: "Sensor alert list item: signal loss"),
                     ]
                 )
 
@@ -62,7 +61,6 @@ struct G7AlertsFromLoopView: View {
             .padding()
             .background(Color(.systemBackground))
         }
-        .navigationBarTitle(Text(LocalizedString("Alerts", comment: "Navigation title of the alerts hand-off page")), displayMode: .inline)
     }
 
     private func section(title: String, icon: String, body: String, bullets: [String] = []) -> some View {
