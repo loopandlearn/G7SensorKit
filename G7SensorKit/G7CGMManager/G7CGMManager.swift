@@ -629,18 +629,14 @@ extension G7CGMManager {
             logDeviceCommunication("Issuing alert \(alert.rawValue)", type: .connection)
         }
         delegate.notify { delegate in
-            Task {
-                await delegate?.issueAlert(loopAlert)
-            }
+            delegate?.issueAlert(loopAlert)
         }
     }
 
     private func retractLifecycleAlert(_ alert: G7LifecycleAlert) {
         let identifier = alert.identifier(managerIdentifier: pluginIdentifier)
         delegate.notify { delegate in
-            Task {
-                await delegate?.retractAlert(identifier: identifier)
-            }
+            delegate?.retractAlert(identifier: identifier)
         }
     }
 
