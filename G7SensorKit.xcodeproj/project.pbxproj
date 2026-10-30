@@ -168,6 +168,7 @@
 		FD0DF29C00B05DECD53A4E2C /* G7CalibrationMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF238DACCD930310363D3EB5 /* G7CalibrationMessage.swift */; };
 		59AC56B39669BE228E64E02F /* G7PairingPlanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7028829033065F083529D6A8 /* G7PairingPlanner.swift */; };
 		808E416E4F165CD7EE2EDE9C /* G7SensorPackage.swift in Sources */ = {isa = PBXBuildFile; fileRef = EADB2921131FCF7BE4BAAA78 /* G7SensorPackage.swift */; };
+		ECC8D2EFB6ED42D5BCEF5901 /* HKUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = C17F514A291EB6F000555EB5 /* HKUnit.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -900,6 +901,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				ECC8D2EFB6ED42D5BCEF5901 /* HKUnit.swift in Sources */,
 				FADE00000000000000000320 /* G7CGMManager.swift in Sources */,
 				FADE00000000000000000321 /* SensorMessage.swift in Sources */,
 				FADE00000000000000000322 /* G7BackfillMessage.swift in Sources */,
