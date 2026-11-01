@@ -684,37 +684,6 @@ extension G7CGMManager {
         }
     }
 
-    /// Records a `sensorIssue` when the reading's state lacks reliable glucose and differs from
-    /// the last one recorded for this sensor. A reliable reading clears it, so a state that
-    /// returns after recovery is recorded again.
-    private func recordSensorIssueIfChanged(_ message: G7GlucoseMessage) {
-        guard let sensorID = state.sensorID else {
-            return
-        }
-        let issue = message.algorithmState.hasReliableGlucose ? nil : message.algorithmState.description
-        let reported = state.sensorIssueReportedFor == sensorID ? state.reportedSensorIssue : nil
-        guard issue != reported else {
-            return
-        }
-        mutateState { state in
-            state.sensorIssueReportedFor = sensorID
-            state.reportedSensorIssue = issue
-        }
-        guard let issue else {
-            return
-        }
-        let activationDate = sensor.activationDate ?? state.activatedAt
-        let event = PersistedCgmEvent(
-            date: activationDate?.addingTimeInterval(TimeInterval(message.glucoseTimestamp)) ?? Date(),
-            type: .sensorIssue,
-            deviceIdentifier: eventDeviceIdentifier(sensorID: sensorID),
-            error: CgmEventError(code: issue, isFatal: message.algorithmState.sensorFailed)
-        )
-        delegate.notify { delegate in
-            delegate?.cgmManager(self, hasNew: [event])
-        }
-    }
-
     /// Closes the current sensor's session in Loop's CGM event history, once.
     /// Paired with the `sensorStart` recorded at discovery, so the history
     /// brackets each session; Loop tolerates a missing end, which is why this
@@ -1015,7 +984,7 @@ extension G7CGMManager: G7SensorDelegate {
     private func calibrationSample(glucose: UInt16, date: Date) -> NewGlucoseSample {
         NewGlucoseSample(
             date: date,
-            quantity: LoopQuantity(unit: .milligramsPerDeciliter, doubleValue: Double(min(max(glucose, GlucoseLimits.minimum), GlucoseLimits.maximum))),
+            quantity: HKQuantity(unit: .milligramsPerDeciliter, doubleValue: Double(min(max(glucose, GlucoseLimits.minimum), GlucoseLimits.maximum))),
             condition: nil,
             trend: nil,
             trendRate: nil,
@@ -1242,7 +1211,6 @@ extension G7CGMManager: G7SensorDelegate {
             didRetractLegacySignalLoss = true
             retractLifecycleAlert(.signalLoss)
         }
-        recordSensorIssueIfChanged(message)
         raiseSensorFailedAlertIfNeeded(for: message)
         recordPendingSensorStart()
 
@@ -1374,8 +1342,7 @@ extension G7CGMManager: G7SensorDelegate {
                 isDisplayOnly: entry.glucoseIsDisplayOnly,
                 wasUserEntered: false,
                 syncIdentifier: generateSyncIdentifier(timestamp: entry.timestamp),
-                device: device,
-                isBackfill: true
+                device: device
             )
         }
 
