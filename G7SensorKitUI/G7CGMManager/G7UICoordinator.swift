@@ -188,12 +188,13 @@ class G7UICoordinator: UINavigationController, CGMManagerOnboarding, CompletionN
                 onLog: { [weak self] message in
                     self?.recordPairingLog(message)
                 },
-                onSuccess: { [weak self] peripheralIdentifier, sharedKey, deviceName, handoff in
+                onSuccess: { [weak self] peripheralIdentifier, sharedKey, deviceName, authenticity, handoff in
                     self?.pairingSucceeded(
                         code: code,
                         peripheralIdentifier: peripheralIdentifier,
                         sharedKey: sharedKey,
                         deviceName: deviceName,
+                        authenticity: authenticity,
                         handoff: handoff
                     )
                 }
@@ -207,7 +208,7 @@ class G7UICoordinator: UINavigationController, CGMManagerOnboarding, CompletionN
             // advertised; `.g7` when it did not announce one, matching what
             // the pairing screen showed a moment ago.
             let model = deviceName.flatMap(G7SensorModel.init(advertisedName:)) ?? .g7
-            let view = G7PairingSuccessView(model: model, deviceName: deviceName, hasNextStep: offersShare) { [weak self] in
+            let view = G7PairingSuccessView(model: model, deviceName: deviceName, hasNextStep: offersShare, warmup: G7PairingWarmupModel(cgmManager: cgmManager)) { [weak self] in
                 guard let self = self else { return }
                 if offersShare {
                     self.navigate(to: .shareSignIn)
@@ -313,8 +314,8 @@ class G7UICoordinator: UINavigationController, CGMManagerOnboarding, CompletionN
         cgmManager?.logDeviceCommunication("[pairing] " + message, type: .connection)
     }
 
-    private func pairingSucceeded(code: String, peripheralIdentifier: UUID, sharedKey: Data, deviceName: String?, handoff: G7PairingHandoff?) {
-        cgmManager?.applyPairingResult(pairingCode: code, peripheralIdentifier: peripheralIdentifier, sharedKey: sharedKey, handoff: handoff)
+    private func pairingSucceeded(code: String, peripheralIdentifier: UUID, sharedKey: Data, deviceName: String?, authenticity: G7SensorAuthenticity, handoff: G7PairingHandoff?) {
+        cgmManager?.applyPairingResult(pairingCode: code, peripheralIdentifier: peripheralIdentifier, sharedKey: sharedKey, authenticity: authenticity, handoff: handoff)
         navigate(to: .pairingSuccess(deviceName: deviceName))
     }
 

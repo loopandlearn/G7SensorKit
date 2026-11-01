@@ -285,7 +285,7 @@ final class G7SessionModeMigrationTests: XCTestCase {
         XCTAssertNil(cleared.state.lastAuthenticationFailure)
 
         // A successful handshake clears the record.
-        manager.sensor(manager.sensor, didAuthenticateWith: Data(repeating: 0x77, count: 16), deviceName: nil)
+        manager.sensor(manager.sensor, didAuthenticateWith: Data(repeating: 0x77, count: 16), deviceName: nil, authenticity: .unverified)
         XCTAssertNil(manager.state.lastAuthenticationFailure)
     }
 
@@ -393,6 +393,20 @@ final class G7SessionModeMigrationTests: XCTestCase {
         XCTAssertNotNil(manager.state.lastAuthenticationFailure)
     }
 
+    /// A reconnect the sensor no longer answers as bonded (`05 01 02`, e.g.
+    /// after "Forget This Device") drops the key so the code pairs again.
+    func testUnbondedReconnectDropsTheStoredKey() {
+        let manager = makeManager(state: pairedState(pairingCode: "1155", peripheralIdentifier: UUID(), sharedKey: Data(repeating: 0x66, count: 16)))
+        manager.sensor.handleAuthenticationFailure(G7AuthenticatorError.storedKeyNotBonded(authStatus: 1, bondStatus: 2))
+        XCTAssertNil(manager.sensor.credentials.sharedKey)
+
+        var noCodeState = pairedState(pairingCode: "1155", peripheralIdentifier: UUID(), sharedKey: Data(repeating: 0x66, count: 16))
+        noCodeState.pairingCode = nil
+        let noCode = makeManager(state: noCodeState)
+        noCode.sensor.handleAuthenticationFailure(G7AuthenticatorError.storedKeyNotBonded(authStatus: 1, bondStatus: 2))
+        XCTAssertNotNil(noCode.sensor.credentials.sharedKey, "without a code the key is the only way back in")
+    }
+
     func testForgettingASensorClosesItsSessionOnce() {
         var state = G7CGMManagerState(rawValue: legacyRawState)
         state.sensorID = "DXCM99"
@@ -484,7 +498,7 @@ final class G7SessionModeMigrationTests: XCTestCase {
         let manager = makeManager(state: pairedState(pairingCode: "1155", peripheralIdentifier: UUID(), sharedKey: nil))
         let key = Data(repeating: 0x55, count: 16)
 
-        manager.sensor(manager.sensor, didAuthenticateWith: key, deviceName: "Dexcom99")
+        manager.sensor(manager.sensor, didAuthenticateWith: key, deviceName: "Dexcom99", authenticity: .unverified)
 
         XCTAssertEqual(manager.state.sharedKey, key)
     }
@@ -508,8 +522,9 @@ private final class BackfillRecordingDelegate: G7SensorDelegate {
     func sensor(_ sensor: G7Sensor, didReceive extendedVersion: ExtendedVersionMessage) {}
     func sensor(_ sensor: G7Sensor, didReceive transmitterVersion: TransmitterVersionMessage) {}
     func sensor(_ sensor: G7Sensor, didReceiveCalibrationResponse response: G7CalibrateRxMessage) {}
+    func sensor(_ sensor: G7Sensor, didDiscardStaleCalibrationEnteredAt date: Date) {}
     func sensor(_ sensor: G7Sensor, didReadCalibrationBounds bounds: G7CalibrationBoundsMessage) {}
     func sensorConnectionStatusDidUpdate(_ sensor: G7Sensor) {}
-    func sensor(_ sensor: G7Sensor, didAuthenticateWith sharedKey: Data, deviceName: String?) {}
+    func sensor(_ sensor: G7Sensor, didAuthenticateWith sharedKey: Data, deviceName: String?, authenticity: G7SensorAuthenticity) {}
     func sensorDidInvalidateSharedKey(_ sensor: G7Sensor) {}
 }

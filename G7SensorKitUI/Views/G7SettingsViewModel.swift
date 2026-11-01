@@ -45,6 +45,8 @@ class G7SettingsViewModel: ObservableObject {
     @Published private(set) var siliconVersion: String?
     @Published private(set) var hardwareVersion: String?
     @Published private(set) var algorithmVersion: String?
+    @Published private(set) var sensorAuthenticity: G7SensorAuthenticity = .unverified
+    @Published private(set) var simulatedSensorWarningSuppressed: Bool = false
     /// Whether the sensor has reported its lifetime; until then the defaults
     /// are in use and not worth presenting as the sensor's own.
     @Published private(set) var hasReportedLifetime: Bool = false
@@ -130,6 +132,8 @@ class G7SettingsViewModel: ObservableObject {
         sensorModelName = cgmManager.sensorModel.displayName(sessionLength: cgmManager.state.extendedVersion?.sessionLength)
         pairingCode = cgmManager.state.pairingCode
         serialNumber = cgmManager.state.transmitterVersion?.serialNumberString
+        sensorAuthenticity = cgmManager.state.sensorAuthenticity
+        simulatedSensorWarningSuppressed = cgmManager.state.simulatedSensorWarningSuppressed
         firmwareVersion = cgmManager.state.transmitterVersion?.firmwareVersion
         softwareNumber = cgmManager.state.transmitterVersion.map { String($0.softwareNumber) }
         siliconVersion = cgmManager.state.transmitterVersion.map { String($0.siliconVersion) }
@@ -161,8 +165,42 @@ class G7SettingsViewModel: ObservableObject {
         updateValues()
     }
 
-    var shareClient: G7ShareClient? {
-        cgmManager.shareClient
+    // MARK: - Watch direct read
+
+    /// Offered when the app supports it and a paired watch has the app installed, or while it is on;
+    /// otherwise the screen is unchanged.
+    var showsWatchDirectRead: Bool {
+        guard cgmManager.cgmManagerDelegate?.supportsWatchDirectRead(for: cgmManager) == true else { return false }
+        if watchDirectReadEnabled { return true }
+        guard WCSession.isSupported() else { return false }
+        let session = WCSession.default
+        return session.activationState == .activated && session.isPaired && session.isWatchAppInstalled
+    }
+
+    func setWatchDirectReadEnabled(_ enabled: Bool) {
+        cgmManager.setWatchDirectReadEnabled(enabled)
+        updateValues()
+    }
+
+    var watchPairingCodeStatusText: String {
+        switch watchPairingCodeStatus {
+        case .noSensor: return LocalizedString("No sensor", comment: "Watch direct read pairing code status when there is no sensor")
+        case .needsCode: return LocalizedString("Needed", comment: "Watch direct read pairing code status when the code has not been entered")
+        case .saved: return LocalizedString("Saved", comment: "Watch direct read pairing code status when the code has been entered")
+        }
+    }
+
+    /// Save the entered 4-digit pairing code for the current sensor. Returns false if there is
+    /// no sensor or the entry is not four digits.
+    @discardableResult
+    func saveWatchPairingCode() -> Bool {
+        guard cgmManager.sensorName != nil else { return false }
+        let ok = cgmManager.setWatchPairingCode(watchPairingCodeEntry)
+        if ok {
+            watchPairingCodeEntry = ""
+            updateValues()
+        }
+        return ok
     }
 
     // MARK: - Watch direct read
@@ -358,6 +396,17 @@ class G7SettingsViewModel: ObservableObject {
 
     func scanForNewSensor() {
         cgmManager.scanForNewSensor()
+    }
+
+    func hideSimulatedSensorWarning() {
+        cgmManager.suppressSimulatedSensorWarning()
+        updateValues()
+    }
+
+    /// Whether the last reading reports a temporary sensor issue, the same
+    /// check behind the "Sensor Issue" status highlight.
+    var hasSensorIssue: Bool {
+        lastReading?.algorithmState.hasTemporaryError == true
     }
 
     /// Whether the last reading carries a glucose value worth showing.

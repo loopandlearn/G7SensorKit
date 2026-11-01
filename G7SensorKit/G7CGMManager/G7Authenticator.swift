@@ -30,6 +30,10 @@ public enum G7AuthenticatorError: Error {
     /// belongs to a different sensor, or a stored key has gone stale.
     case challengeMismatch
 
+    /// A stored-key reconnect the sensor did not answer as authenticated and
+    /// bonded (e.g. `05 01 02` after the bond was forgotten in iOS settings).
+    case storedKeyNotBonded(authStatus: UInt8, bondStatus: UInt8)
+
     /// Neither a stored key nor a pairing code was available.
     case noCredentials
 
@@ -72,6 +76,11 @@ extension G7AuthenticatorError: CustomStringConvertible {
                 "This sensor does not match the pairing code entered.",
                 comment: "Error description when a G7 sensor's challenge response does not match the pairing code"
             )
+        case .storedKeyNotBonded:
+            return LocalizedString(
+                "The sensor no longer recognizes this phone. Pair it again with its code.",
+                comment: "Error description when a G7 sensor no longer honors the saved key and no pairing code is available"
+            )
         case .noCredentials:
             return LocalizedString(
                 "No pairing code or saved key is available for this sensor.",
@@ -111,6 +120,10 @@ final class G7Authenticator {
         /// Whether this run performed the EC-JPAKE exchange (as opposed to
         /// reusing a stored key).
         let didExchangeKeys: Bool
+        /// Whether the sensor proved itself genuine Dexcom, the g7sim emulator,
+        /// or could not be verified. Only meaningful after a fresh pairing (a
+        /// reconnect does not re-exchange certificates); `.unverified` then.
+        let authenticity: G7SensorAuthenticity
         /// The sensor dropped the link before confirming the Bluetooth bond. The key holds only if the
         /// system pairing went through; with the app in the background it can't, and the sensor discards it.
         var bondUnconfirmed = false
@@ -136,6 +149,13 @@ final class G7Authenticator {
     private let stepTimeout: TimeInterval
     /// Which of the sensor's display slots this client takes.
     private let displayType: G7DisplayType
+
+    /// Captured during a fresh pairing to classify the sensor afterwards: its
+    /// leaf certificate, the nonce we sent in the key challenge, and the
+    /// signature it returned.
+    private var sensorLeafCertificate: Data?
+    private var keyChallengeNonce: Data?
+    private var keyChallengeSignature: Data?
 
     /// Receives a short description of each step as it happens, for the
     /// in-app device communication log. A tester reporting "it got stuck"
@@ -229,17 +249,14 @@ final class G7Authenticator {
         // pairing; so do we.
         if !didExchangeKeys, status.isAuthenticated, status.isBonded {
             report("Already authenticated and bonded")
-            return Result(sharedKey: sharedKey, deviceName: peripheral.peripheral.name, didExchangeKeys: didExchangeKeys)
+            return Result(sharedKey: sharedKey, deviceName: peripheral.peripheral.name, didExchangeKeys: didExchangeKeys, authenticity: .unverified)
         }
 
         if !didExchangeKeys, !status.isAuthenticated {
             // A reconnect that got this far without being authenticated has a
             // key the sensor no longer honours. Re-pairing is the only fix,
             // and the caller decides whether it can do that unattended.
-            throw G7AuthenticatorError.unexpectedResponse(
-                step: "reconnect",
-                response: Data([0x05, status.authStatus, status.bondStatus])
-            )
+            throw G7AuthenticatorError.storedKeyNotBonded(authStatus: status.authStatus, bondStatus: status.bondStatus)
         }
 
         report("Running the certificate exchange (auth=\(status.authStatus) bond=\(status.bondStatus))")
@@ -252,18 +269,29 @@ final class G7Authenticator {
             // Authenticated but not bonded on a reconnect (05 01 02 after the system bond was lost): the key
             // still holds, so the certificate phase bonds again. If that fails, pair again as before.
             report("Bonding again with the saved key failed: \(error)")
-            throw G7AuthenticatorError.unexpectedResponse(
-                step: "reconnect",
-                response: Data([0x05, status.authStatus, status.bondStatus])
-            )
+            throw G7AuthenticatorError.storedKeyNotBonded(authStatus: status.authStatus, bondStatus: status.bondStatus)
         }
 
+        let authenticity = evaluateAuthenticity()
+        report("Sensor authenticity: \(authenticity.rawValue)")
         return Result(
             sharedKey: sharedKey,
             deviceName: peripheral.peripheral.name,
             didExchangeKeys: didExchangeKeys,
+            authenticity: authenticity,
             bondUnconfirmed: !bonded
         )
+    }
+
+    /// Classifies the sensor from what it presented during this fresh pairing.
+    private func evaluateAuthenticity() -> G7SensorAuthenticity {
+        guard let leaf = sensorLeafCertificate,
+              let nonce = keyChallengeNonce,
+              let signature = keyChallengeSignature
+        else {
+            return .unverified
+        }
+        return G7SensorIdentity.authenticity(leafCertificate: leaf, challengeSignature: signature, nonce: nonce)
     }
 
     // MARK: - EC-JPAKE
@@ -417,6 +445,11 @@ final class G7Authenticator {
         }
 
         let theirs = try waitForCertificateBytes(peripheral, buffer: buffer, count: expectedLength, step: step)
+        // Index 1 is the sensor's leaf certificate (index 0 is the issuing
+        // intermediate), which classifies the sensor after the handshake.
+        if index == 1 {
+            sensorLeafCertificate = theirs
+        }
         report("\(step): received \(theirs.count) bytes, sending ours (\(certificate.count) bytes)")
         try peripheral.writeCertificateBytes(certificate)
     }
@@ -428,8 +461,10 @@ final class G7Authenticator {
         report("\(step): sending a nonce")
 
         let buffer = installCertificateBuffer(peripheral)
+        let nonce = G7JPAKE.secureRandomBytes(16)
+        keyChallengeNonce = nonce
         try peripheral.writeValue(
-            Data([0x0C]) + G7JPAKE.secureRandomBytes(16),
+            Data([0x0C]) + nonce,
             for: .authentication,
             type: .withResponse
         )
@@ -440,10 +475,10 @@ final class G7Authenticator {
             throw G7AuthenticatorError.unexpectedResponse(step: step, response: acknowledgement)
         }
 
-        // The sensor's own 64-byte block arrives alongside. We do not verify
-        // it: the sensor is checking us, not the other way round, and the
-        // signing key it would be checked against is the one we just sent.
-        _ = try waitForCertificateBytes(peripheral, buffer: buffer, count: 64, step: step)
+        // The sensor's own 64-byte block arrives alongside: an ECDSA-P256
+        // signature over SHA256(our nonce) with its leaf key, which classifies
+        // the sensor (G7SensorIdentity). It is not needed to complete pairing.
+        keyChallengeSignature = try waitForCertificateBytes(peripheral, buffer: buffer, count: 64, step: step)
 
         let signature = try G7ChallengeSigner.sign(challengeAcknowledgement: acknowledgement)
         report("\(step): sending our signature")

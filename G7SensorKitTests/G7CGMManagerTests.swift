@@ -199,6 +199,11 @@ final class G7CGMManagerTests: XCTestCase {
         XCTAssertEqual(Self.sensorID, manager.state.sensorID)
     }
 
+    /// Only the watchOS target compiles an acquisition arm; here the stock steps run.
+    func testThisPlatformUsesTheStockAcquisition() {
+        XCTAssertNil(TestBluetoothManager().acquisitionArm)
+    }
+
     // MARK: - Discovery
 
     /// The identifier a new sensor was found under must reach the persisted
@@ -252,10 +257,5 @@ final class G7CGMManagerTests: XCTestCase {
         sensor.reconfigure(mode: .direct, credentials: G7SensorCredentials(sensorID: Self.sensorID, pairingCode: "0420", sharedKey: nil, peripheralIdentifier: repaired))
 
         XCTAssertEqual(repaired, bluetoothManager.activePeripheralIdentifier)
-    }
-
-    /// Only the watchOS target compiles an acquisition arm; here the stock steps run.
-    func testThisPlatformUsesTheStockAcquisition() {
-        XCTAssertNil(TestBluetoothManager().acquisitionArm)
     }
 }

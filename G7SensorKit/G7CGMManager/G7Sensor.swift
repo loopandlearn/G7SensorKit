@@ -42,6 +42,9 @@ public protocol G7SensorDelegate: AnyObject {
     /// The sensor's answer to a calibration we sent.
     func sensor(_ sensor: G7Sensor, didReceiveCalibrationResponse response: G7CalibrateRxMessage)
 
+    /// A queued calibration grew too old to send before the sensor connected.
+    func sensor(_ sensor: G7Sensor, didDiscardStaleCalibrationEnteredAt date: Date)
+
     /// The sensor's calibration state, after a calibration or on request.
     func sensor(_ sensor: G7Sensor, didReadCalibrationBounds bounds: G7CalibrationBoundsMessage)
 
@@ -50,7 +53,7 @@ public protocol G7SensorDelegate: AnyObject {
 
     /// Direct mode only: a handshake produced a new shared key, which the
     /// caller must persist so later reconnects can skip the key exchange.
-    func sensor(_ sensor: G7Sensor, didAuthenticateWith sharedKey: Data, deviceName: String?)
+    func sensor(_ sensor: G7Sensor, didAuthenticateWith sharedKey: Data, deviceName: String?, authenticity: G7SensorAuthenticity)
 
     /// Direct mode only: the stored shared key is no longer accepted by the
     /// sensor. It has been discarded; if a pairing code is still held, the
@@ -193,6 +196,10 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
     /// readings has to wait. Newest wins. Settable from any queue.
     private let lockedPendingCalibration = Locked<(glucose: UInt16, date: Date)?>(nil)
 
+    /// A meter reading older than this no longer describes the glucose the
+    /// sensor is measuring, so it is dropped rather than sent.
+    public static let calibrationMaxAge = TimeInterval(minutes: 5)
+
     /// Whether to ask for the calibration state on the next connection.
     private let lockedCalibrationBoundsRequestPending = Locked(false)
 
@@ -240,10 +247,8 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
     /// Whether a peripheral is the sensor these credentials describe.
     ///
     /// By identifier once one is known. Otherwise by the last two characters
-    /// of the name, because the name itself changes: a sensor advertises as
-    /// "DXCMxx" but reports "Dexcomxx" over GAP once connected, and a
-    /// peripheral retrieved for a reconnect carries the latter. Comparing
-    /// whole names silently stopped every reconnect after the first.
+    /// of the name, so a match does not depend on which prefix the
+    /// peripheral reports.
     static func isSensor(identifier: UUID, name: String?, describedBy credentials: G7SensorCredentials) -> Bool {
         if let known = credentials.peripheralIdentifier {
             return identifier == known
@@ -255,7 +260,7 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
     }
 
     /// Names a G7-family sensor uses: the model prefixes ("DXCMxx",
-    /// "DX02xx", "DX01xx") in advertisements, "Dexcomxx" once connected.
+    /// "DX02xx", "DX01xx"), or "Dexcomxx".
     static func isSensorName(_ name: String) -> Bool {
         G7SensorModel.isFamilyName(name)
     }
@@ -404,7 +409,13 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
         guard let activationDate = activationDate else {
             return
         }
-        if let calibration = lockedPendingCalibration.value {
+        if let calibration = lockedPendingCalibration.value, Date().timeIntervalSince(calibration.date) > G7Sensor.calibrationMaxAge {
+            lockedPendingCalibration.value = nil
+            logToDevice("Dropping calibration \(calibration.glucose) mg/dL entered at \(calibration.date): older than \(Int(G7Sensor.calibrationMaxAge)) s", type: .connection)
+            delegateQueue.async {
+                self.delegate?.sensor(self, didDiscardStaleCalibrationEnteredAt: calibration.date)
+            }
+        } else if let calibration = lockedPendingCalibration.value {
             lockedPendingCalibration.value = nil
             let sensorAge = UInt32(max(0, calibration.date.timeIntervalSince(activationDate)))
             let request = G7CalibrateTxMessage(glucose: calibration.glucose, sensorAge: sensorAge).data
@@ -556,7 +567,8 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
                         self.delegate?.sensor(
                             self,
                             didAuthenticateWith: authResult.sharedKey,
-                            deviceName: authResult.deviceName
+                            deviceName: authResult.deviceName,
+                            authenticity: authResult.authenticity
                         )
                     }
                 }
@@ -646,22 +658,23 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
         }
     }
 
-    private func handleAuthenticationFailure(_ error: Error) {
+    func handleAuthenticationFailure(_ error: Error) {
         pendingAuth = false
         log.error("Authentication failed: %{public}@", String(describing: error))
 
         // A stale key is recoverable without the user: drop it, and the next
         // connection runs a full handshake with the pairing code we still
-        // hold. Two signals say the key is stale: the sensor's answer to our
+        // hold. Three signals say the key is stale: the sensor's answer to our
         // challenge not matching (caught before we ever send a wrong reply,
         // so the sensor records no rejection), and the sensor saying outright
-        // that it has no key for us. Without a code there is nothing to fall
-        // back to, so leave the key in place rather than locking the sensor
-        // out of reconnecting.
+        // that it has no key for us, or not as bonded on a reconnect. Without
+        // a code there is nothing to fall back to, so leave the key in place
+        // rather than locking the sensor out of reconnecting.
         let keyIsStale: Bool
         switch error {
         case G7AuthenticatorError.challengeMismatch,
-             G7AuthenticatorError.rejected(_, .noAppKey):
+             G7AuthenticatorError.rejected(_, .noAppKey),
+             G7AuthenticatorError.storedKeyNotBonded:
             keyIsStale = true
         default:
             keyIsStale = false
@@ -783,11 +796,9 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
         }
 
         // Once paired, only ever the sensor we paired with, and by identifier,
-        // never by name: a peripheral retrieved for a reconnect carries the
-        // post-connection "Dexcomxx" name, not the advertised "DXCMxx". A
-        // sensor admits one display at a time, so connecting to a stranger's
-        // sensor would take its slot, and our key would not authenticate
-        // there anyway.
+        // never by name. A sensor admits one display at a time, so connecting
+        // to a stranger's sensor would take its slot, and our key would not
+        // authenticate there anyway.
         if mode == .direct, let identifier = credentials.peripheralIdentifier {
             guard peripheral.identifier == identifier else {
                 return .ignore
@@ -900,15 +911,13 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
             }
         case .calibrate:
             if let message = G7CalibrateRxMessage(data: response) {
-                logToDevice("Calibration \(message.accepted ? "accepted" : "refused") by the sensor (status \(message.status))", type: .connection)
+                logToDevice("Calibration \(message.accepted ? "accepted" : "refused") by the sensor (result \(message.result), detail \(message.detail))", type: .connection)
                 delegateQueue.async {
                     self.delegate?.sensor(self, didReceiveCalibrationResponse: message)
                 }
                 // Confirm what the sensor made of it while the link is up.
-                if message.accepted {
-                    peripheralManager.perform { peripheral in
-                        self.sendCalibrationBoundsRequest(peripheral)
-                    }
+                peripheralManager.perform { peripheral in
+                    self.sendCalibrationBoundsRequest(peripheral)
                 }
             }
         case .calibrationBounds:
