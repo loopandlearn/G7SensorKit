@@ -61,6 +61,10 @@ public struct G7CGMManagerState: RawRepresentable, Equatable {
     /// per-reading HealthKit metadata still marks the data simulated.
     public var simulatedSensorWarningSuppressed: Bool = false
 
+    /// Whether the calibration advice has been read through to the entry
+    /// page. Kept across sensor changes; removing the CGM resets it.
+    public var calibrationAdviceSeen: Bool = false
+
     /// The paired sensor's CoreBluetooth identifier, so a relaunch can
     /// retrieve it directly instead of waiting for its next advertisement.
     public var peripheralIdentifier: UUID?
@@ -131,6 +135,9 @@ public struct G7CGMManagerState: RawRepresentable, Equatable {
     /// The user wants the watch to read this sensor itself (the Read on Apple Watch setting).
     var watchDirectReadEnabled = false
 
+    /// A sensor paired while this one still reads, followed alongside until it has warmed up.
+    public var nextSensor: G7NextSensor?
+
     init() {
     }
 
@@ -165,6 +172,7 @@ public struct G7CGMManagerState: RawRepresentable, Equatable {
         self.sharedKey = rawValue["sharedKey"] as? Data
         self.sensorAuthenticity = (rawValue["sensorAuthenticity"] as? String).flatMap(G7SensorAuthenticity.init(rawValue:)) ?? .unverified
         self.simulatedSensorWarningSuppressed = rawValue["simulatedSensorWarningSuppressed"] as? Bool ?? false
+        self.calibrationAdviceSeen = rawValue["calibrationAdviceSeen"] as? Bool ?? false
         self.peripheralIdentifier = (rawValue["peripheralIdentifier"] as? String).flatMap(UUID.init(uuidString:))
         self.lastAuthenticationFailure = rawValue["lastAuthenticationFailure"] as? String
         self.lastAuthenticationFailureDate = rawValue["lastAuthenticationFailureDate"] as? Date
@@ -191,6 +199,7 @@ public struct G7CGMManagerState: RawRepresentable, Equatable {
         self.suspectedSessionEndAt = rawValue["suspectedSessionEndAt"] as? Date
         self.configuredByAnotherController = rawValue["configuredByAnotherController"] as? Bool ?? false
         self.watchDirectReadEnabled = rawValue["watchDirectReadEnabled"] as? Bool ?? false
+        self.nextSensor = (rawValue["nextSensor"] as? G7NextSensor.RawValue).flatMap(G7NextSensor.init(rawValue:))
         // A manager passed its configuration reads directly: there is no session to eavesdrop on.
         // Without a code it stands down until a new configuration brings one.
         if configuredByAnotherController {
@@ -213,6 +222,7 @@ public struct G7CGMManagerState: RawRepresentable, Equatable {
         rawValue["sharedKey"] = sharedKey
         rawValue["sensorAuthenticity"] = sensorAuthenticity.rawValue
         rawValue["simulatedSensorWarningSuppressed"] = simulatedSensorWarningSuppressed
+        rawValue["calibrationAdviceSeen"] = calibrationAdviceSeen
         rawValue["peripheralIdentifier"] = peripheralIdentifier?.uuidString
         rawValue["lastAuthenticationFailure"] = lastAuthenticationFailure
         rawValue["lastAuthenticationFailureDate"] = lastAuthenticationFailureDate
@@ -237,6 +247,7 @@ public struct G7CGMManagerState: RawRepresentable, Equatable {
         rawValue["shareLastError"] = shareLastError
         rawValue["shareLastErrorAt"] = shareLastErrorAt
         rawValue["suspectedSessionEndAt"] = suspectedSessionEndAt
+        rawValue["nextSensor"] = nextSensor?.rawValue
         if watchDirectReadEnabled {
             rawValue["watchDirectReadEnabled"] = true
         }
@@ -244,6 +255,72 @@ public struct G7CGMManagerState: RawRepresentable, Equatable {
             rawValue["configuredByAnotherController"] = true
         }
         return rawValue
+    }
+}
+
+/// A sensor paired while the current one still reads. A standby session follows it through its
+/// warm-up; its first reliable reading switches the session over, so readings never pause.
+public struct G7NextSensor: RawRepresentable, Equatable {
+    public typealias RawValue = [String: Any]
+
+    public var sensorID: String
+    public var pairingCode: String
+    public var sharedKey: Data?
+    public var peripheralIdentifier: UUID?
+    public var authenticity: G7SensorAuthenticity
+    public var pairedAt: Date
+    /// From the standby's readings.
+    public var activatedAt: Date?
+    public var latestReading: G7GlucoseMessage?
+    /// When it first reported a failure. The user decides whether to discard it.
+    public var failedAt: Date?
+
+    init(sensorID: String, pairingCode: String, sharedKey: Data?, peripheralIdentifier: UUID?, authenticity: G7SensorAuthenticity, pairedAt: Date) {
+        self.sensorID = sensorID
+        self.pairingCode = pairingCode
+        self.sharedKey = sharedKey
+        self.peripheralIdentifier = peripheralIdentifier
+        self.authenticity = authenticity
+        self.pairedAt = pairedAt
+    }
+
+    public init?(rawValue: RawValue) {
+        guard let sensorID = rawValue["sensorID"] as? String,
+              let pairingCode = rawValue["pairingCode"] as? String,
+              let pairedAt = rawValue["pairedAt"] as? Date
+        else {
+            return nil
+        }
+        self.init(
+            sensorID: sensorID,
+            pairingCode: pairingCode,
+            sharedKey: rawValue["sharedKey"] as? Data,
+            peripheralIdentifier: (rawValue["peripheralIdentifier"] as? String).flatMap(UUID.init(uuidString:)),
+            authenticity: (rawValue["authenticity"] as? String).flatMap(G7SensorAuthenticity.init(rawValue:)) ?? .unverified,
+            pairedAt: pairedAt
+        )
+        activatedAt = rawValue["activatedAt"] as? Date
+        latestReading = (rawValue["latestReading"] as? Data).flatMap(G7GlucoseMessage.init(data:))
+        failedAt = rawValue["failedAt"] as? Date
+    }
+
+    public var rawValue: RawValue {
+        var raw: RawValue = [
+            "sensorID": sensorID,
+            "pairingCode": pairingCode,
+            "authenticity": authenticity.rawValue,
+            "pairedAt": pairedAt,
+        ]
+        raw["sharedKey"] = sharedKey
+        raw["peripheralIdentifier"] = peripheralIdentifier?.uuidString
+        raw["activatedAt"] = activatedAt
+        raw["latestReading"] = latestReading?.data
+        raw["failedAt"] = failedAt
+        return raw
+    }
+
+    var credentials: G7SensorCredentials {
+        G7SensorCredentials(sensorID: sensorID, pairingCode: pairingCode, sharedKey: sharedKey, peripheralIdentifier: peripheralIdentifier)
     }
 }
 

@@ -40,6 +40,8 @@ struct G7SettingsView: View {
     @State private var showingCalibration = false
     @State private var showingShareSignIn = false
     @State private var showingDexcomAppModeConfirmation = false
+    @State private var showingStopCurrentConfirmation = false
+    @State private var showingDiscardNextConfirmation = false
     @State private var showingDexcomAppModeInstructions = false
     @State private var showingHideSimulatedWarningSheet = false
 
@@ -158,10 +160,44 @@ if viewModel.sessionMode == .eavesdropping {
                     }
                 }
 
+                if viewModel.sensorName != nil {
+                    Button(role: .destructive, action: { showingStopCurrentConfirmation = true }) {
+                        Text(LocalizedString("Stop Current Sensor", comment: "Button to stop reading the current sensor"))
+                    }
+                }
+
                 deleteCGMButton
             }
         }
         .insetGroupedListStyle()
+        .confirmationDialog(
+            LocalizedString("Stop Current Sensor?", comment: "Title of the confirmation for stopping the current sensor"),
+            isPresented: $showingStopCurrentConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(LocalizedString("Stop Sensor", comment: "Confirmation button to stop the current sensor"), role: .destructive) {
+                viewModel.stopCurrentSensor()
+            }
+            Button(LocalizedString("Cancel", comment: "Button text to cancel G7 setup"), role: .cancel) {}
+        } message: {
+            if let next = viewModel.nextSensor, next.failedAt == nil {
+                Text(String(format: LocalizedString("%1$@ takes over now, even if it is still warming up.", comment: "Message of the stop confirmation with a next sensor paired (1: its name)"), next.sensorID))
+            } else {
+                Text(LocalizedString("The sensor is no longer read. Pair a new sensor to get readings again.", comment: "Message of the stop confirmation without a next sensor"))
+            }
+        }
+        .confirmationDialog(
+            LocalizedString("Discard Next Sensor?", comment: "Title of the confirmation for dropping the next sensor"),
+            isPresented: $showingDiscardNextConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(LocalizedString("Discard", comment: "Confirmation button to drop the next sensor"), role: .destructive) {
+                viewModel.discardNextSensor()
+            }
+            Button(LocalizedString("Cancel", comment: "Button text to cancel G7 setup"), role: .cancel) {}
+        } message: {
+            Text(LocalizedString("The current sensor stays in use. Pair the new sensor again to have it take over.", comment: "Message of the confirmation for dropping the next sensor"))
+        }
         .navigationBarItems(trailing: doneButton)
         .sheet(isPresented: $showingCalibration) {
             G7CalibrationFlowView(viewModel: viewModel)
@@ -319,6 +355,22 @@ if viewModel.sessionMode == .eavesdropping {
                     label: LocalizedString("Paired", comment: "Row label for when the sensor was paired"),
                     value: timeFormatter.string(from: pairedAt)
                 )
+            }
+            if let next = viewModel.nextSensor {
+                LabeledValueView(
+                    label: LocalizedString("Next Sensor", comment: "Row label for a sensor paired while the current one still reads"),
+                    value: String(
+                        format: next.failedAt != nil
+                            ? LocalizedString("%1$@ failed", comment: "Next sensor row value after it reported a failure (1: sensor name)")
+                            : next.latestReading?.algorithmState.isInWarmup == true
+                            ? LocalizedString("%1$@ warming up", comment: "Next sensor row value while it warms up (1: sensor name)")
+                            : LocalizedString("%1$@ takes over once warmed up", comment: "Next sensor row value before its first reading (1: sensor name)"),
+                        next.sensorID
+                    )
+                )
+                Button(role: .destructive, action: { showingDiscardNextConfirmation = true }) {
+                    Text(LocalizedString("Discard Next Sensor", comment: "Button to drop the sensor paired to take over"))
+                }
             }
             if let previousSensor = viewModel.previousSensor {
                 NavigationLink(destination: G7PreviousSensorView(record: previousSensor)) {

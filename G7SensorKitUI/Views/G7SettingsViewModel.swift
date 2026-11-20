@@ -31,6 +31,7 @@ class G7SettingsViewModel: ObservableObject {
     @Published private(set) var title: String = ""
     @Published private(set) var pairedAt: Date?
     @Published private(set) var previousSensor: G7SensorRecord?
+    @Published private(set) var nextSensor: G7NextSensor?
     @Published private(set) var lastGlucoseTrend: GlucoseTrend?
     @Published private(set) var sensorEndsAt: Date?
     @Published private(set) var sensorModel: G7SensorModel = .g7
@@ -54,6 +55,7 @@ class G7SettingsViewModel: ObservableObject {
     @Published private(set) var calibrationBounds: G7CalibrationBoundsMessage?
     @Published private(set) var hasPendingCalibration: Bool = false
     @Published private(set) var canCalibrate: Bool = false
+    @Published private(set) var calibrationAdviceSeen: Bool = false
     @Published private(set) var shareUsername: String?
     @Published private(set) var shareServer: G7ShareServer?
     @Published private(set) var shareUploadStatus = G7ShareUploadStatus()
@@ -124,6 +126,7 @@ class G7SettingsViewModel: ObservableObject {
         title = cgmManager.localizedTitle
         pairedAt = cgmManager.state.pairedAt
         previousSensor = cgmManager.state.previousSensor
+        nextSensor = cgmManager.state.nextSensor
         lastGlucoseTrend = cgmManager.latestReading?.hasReliableGlucose == true ? cgmManager.latestReading?.trendType : nil
         sensorEndsAt = cgmManager.sensorEndsAt
         sensorModel = cgmManager.sensorModel
@@ -144,6 +147,7 @@ class G7SettingsViewModel: ObservableObject {
         calibrationBounds = cgmManager.state.calibrationBounds
         hasPendingCalibration = cgmManager.hasPendingCalibration
         canCalibrate = cgmManager.canCalibrate
+        calibrationAdviceSeen = cgmManager.state.calibrationAdviceSeen
         shareUsername = cgmManager.shareAccount?.username
         shareServer = cgmManager.shareAccount?.server
         shareUploadStatus = cgmManager.shareUploadStatus
@@ -355,12 +359,26 @@ class G7SettingsViewModel: ObservableObject {
         updateValues()
     }
 
+    func stopCurrentSensor() {
+        cgmManager.stopCurrentSensor()
+    }
+
+    func discardNextSensor() {
+        cgmManager.discardNextSensor()
+    }
+
     func scanForNewSensor() {
         cgmManager.scanForNewSensor()
     }
 
     func hideSimulatedSensorWarning() {
         cgmManager.suppressSimulatedSensorWarning()
+        updateValues()
+    }
+
+    func markCalibrationAdviceSeen() {
+        guard !calibrationAdviceSeen else { return }
+        cgmManager.markCalibrationAdviceSeen()
         updateValues()
     }
 

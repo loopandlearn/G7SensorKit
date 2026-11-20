@@ -82,6 +82,14 @@ public class G7CGMManager: CGMManager {
     /// Sends readings to Dexcom Share while an account is signed in.
     private var shareUploader: G7ShareUploader?
 
+    /// The session following `state.nextSensor` through its warm-up, on a central of its own.
+    private let lockedStandby = Locked<(sensor: G7Sensor, listener: G7StandbyListener)?>(nil)
+
+    /// Factory seam: tests substitute a central without the restore identifier.
+    var makeStandbyBluetoothManager: () -> G7BluetoothManager = {
+        G7BluetoothManager(restoreIdentifier: G7BluetoothManager.sessionRestoreIdentifier + ".next")
+    }
+
     private let g7StateObservers = WeakSynchronizedSet<G7StateObserver>()
 
     public weak var cgmManagerDelegate: CGMManagerDelegate? {
@@ -328,6 +336,9 @@ public class G7CGMManager: CGMManager {
         }
         // A grace period may have been in flight when the app was last terminated.
         restorePendingSuspectedSessionEnd()
+        if let next = state.nextSensor {
+            startStandby(next)
+        }
     }
 
 
@@ -396,10 +407,24 @@ public class G7CGMManager: CGMManager {
 
         cancelSuspectedSessionEndScan()
 
+        // A new sensor paired while the current one still reads waits alongside it, so readings
+        // carry on through its warm-up.
+        if !isSameSensor, let pairedName, peripheralIdentifier != state.peripheralIdentifier, currentSensorStillReads {
+            bridgeToNextSensor(
+                G7NextSensor(sensorID: pairedName, pairingCode: pairingCode, sharedKey: sharedKey,
+                             peripheralIdentifier: peripheralIdentifier, authenticity: authenticity, pairedAt: Date()),
+                handoff: handoff
+            )
+            return
+        }
+
         if isSameSensor {
             logDeviceCommunication("Paired directly with \(state.sensorID!), the sensor already being followed; switching out of eavesdropping mode and keeping its session.", type: .connection)
         } else {
             logDeviceCommunication("Paired with a sensor directly; switching out of eavesdropping mode.", type: .connection)
+            if state.nextSensor?.failedAt != nil { retractNextSensorFailedAlert() }
+            stopStandby()
+            mutateState { $0.nextSensor = nil }
             retractAllLifecycleAlerts()
             recordSensorEndIfNeeded()
             archiveCurrentSensor(reason: .replaced)
@@ -495,6 +520,8 @@ public class G7CGMManager: CGMManager {
             "pairedAt: \(String(describing: state.pairedAt))",
             "sensorFailure: \(String(describing: state.sensorFailureMessage)) at \(String(describing: state.sensorFailedAt))",
             "previousSensor: \(String(describing: state.previousSensor?.rawValue))",
+            "calibrationAdviceSeen: \(state.calibrationAdviceSeen)",
+            "nextSensor: \(state.nextSensor.map { "\($0.sensorID) paired \($0.pairedAt), activated \(String(describing: $0.activatedAt))" } ?? "none")",
         ]
         return lines.joined(separator: "\n")
     }
@@ -529,10 +556,57 @@ public class G7CGMManager: CGMManager {
     }
 
     public func scanForNewSensor() {
+        forgetSensor(reason: .replaced)
+    }
+
+    /// The user stops the current sensor: a next sensor takes over at once, warmed up or not;
+    /// without one the session waits for a new sensor.
+    public func stopCurrentSensor() {
+        guard state.sensorID != nil else { return }
+        logDeviceCommunication("Current sensor \(state.sensorID!) stopped by the user.", type: .connection)
+        forgetSensor(reason: .stopped)
+    }
+
+    /// The user drops the next sensor; the current one carries on.
+    public func discardNextSensor() {
+        guard let next = state.nextSensor else { return }
+        logDeviceCommunication("Next sensor \(next.sensorID) discarded by the user.", type: .connection)
+        stopStandby()
+        mutateState { $0.nextSensor = nil }
+        retractNextSensorFailedAlert()
+    }
+
+    private var nextSensorFailedAlertIdentifier: Alert.Identifier {
+        Alert.Identifier(managerIdentifier: pluginIdentifier, alertIdentifier: "nextSensor.failed")
+    }
+
+    private func retractNextSensorFailedAlert() {
+        let identifier = nextSensorFailedAlertIdentifier
+        delegate.notify { delegate in
+            Task { await delegate?.retractAlert(identifier: identifier) }
+        }
+    }
+
+    /// Lets go of the current sensor. With a next sensor paired, the session moves to it, `reading`
+    /// being its first reliable one when that is what triggered the switch; returns true then.
+    /// Otherwise it scans for a new sensor.
+    @discardableResult
+    private func forgetSensor(reason: G7SensorRecord.EndReason, nextSensorReading reading: G7GlucoseMessage? = nil) -> Bool {
         cancelSuspectedSessionEndScan()
-        retractAllLifecycleAlerts()
+        if reason == .failed {
+            // The failure alert stays up until a new sensor is adopted.
+            G7LifecycleAlert.allCases.filter { $0 != .sensorFailed }.forEach(retractLifecycleAlert)
+        } else {
+            retractAllLifecycleAlerts()
+        }
         recordSensorEndIfNeeded()
-        archiveCurrentSensor(reason: .replaced)
+        archiveCurrentSensor(reason: reason)
+
+        // A failed next sensor stays for the user to discard.
+        if let next = state.nextSensor, next.failedAt == nil {
+            adoptNextSensor(next, reading: reading)
+            return true
+        }
 
         logDeviceCommunication("Forgetting existing sensor and starting scan for new sensor.", type: .connection)
 
@@ -547,13 +621,149 @@ public class G7CGMManager: CGMManager {
             state.sharedKey = nil
             state.peripheralIdentifier = nil
             state.lifecycleAlertsScheduledFor = nil
-            state.sensorFailedAlertIssuedFor = nil
             state.sensorEndRecordedFor = nil
             state.pairedAt = nil
             state.sensorFailureMessage = nil
             state.sensorFailedAt = nil
         }
         sensor.scanForNewSensor()
+        return false
+    }
+
+    // MARK: - Next sensor
+
+    /// The current sensor delivers readings: a new one can warm up beside it.
+    private var currentSensorStillReads: Bool {
+        guard !state.configuredByAnotherController, state.sensorID != nil else { return false }
+        switch lifecycleState {
+        case .ok, .gracePeriod:
+            return true
+        case .searching, .unpaired, .connecting, .warmup, .failed, .expired:
+            return false
+        }
+    }
+
+    /// Keeps the current sensor and follows `next` on a standby session until it has warmed up.
+    private func bridgeToNextSensor(_ next: G7NextSensor, handoff: G7PairingHandoff?) {
+        logDeviceCommunication("Paired \(next.sensorID) while \(state.sensorID ?? "the current sensor") still reads; switching once it has warmed up.", type: .connection)
+        stopStandby()
+        if state.nextSensor?.failedAt != nil { retractNextSensorFailedAlert() }
+        mutateState { $0.nextSensor = next }
+        // The pairing run's link to the new sensor closes; the session's central returns to the current one.
+        if handoff != nil {
+            sensor.bluetoothManager.disconnectAll()
+        }
+        sensor.reconfigure(mode: state.sessionMode, credentials: state.sensorCredentials)
+        sensor.latestReadingDate = state.latestReadingTimestamp
+        sensor.resumeScanning()
+        startStandby(next)
+    }
+
+    private func startStandby(_ next: G7NextSensor) {
+        let standby = G7Sensor(mode: .direct, credentials: next.credentials, bluetoothManager: makeStandbyBluetoothManager(),
+                               displayType: displayType, delegateQueue: sensor.delegateQueue)
+        let listener = G7StandbyListener(manager: self)
+        standby.delegate = listener
+        lockedStandby.value = (standby, listener)
+        standby.resumeScanning()
+    }
+
+    /// The session following the next sensor, while there is one.
+    var standbySensor: G7Sensor? { lockedStandby.value?.sensor }
+
+    private func stopStandby() {
+        guard let standby = lockedStandby.value?.sensor else { return }
+        lockedStandby.value = nil
+        standby.delegate = nil
+        standby.stopScanning()
+        // No delegate, no rescan after the link closes.
+        standby.bluetoothManager.delegate = nil
+    }
+
+    /// The next sensor's reading, on the session's delegate queue. The first reliable one switches.
+    func standby(_ standby: G7Sensor, didRead message: G7GlucoseMessage) {
+        guard var next = state.nextSensor, lockedStandby.value?.sensor === standby else { return }
+        next.activatedAt = standby.activationDate ?? next.activatedAt
+        next.latestReading = message
+        mutateState { $0.nextSensor = next }
+
+        // A failed next sensor is the user's to discard: told once, never switched to.
+        if message.algorithmState.sensorFailed || next.failedAt != nil {
+            guard next.failedAt == nil else { return }
+            logDeviceCommunication("Next sensor \(next.sensorID) failed (\(message.algorithmState)); staying with \(state.sensorID ?? "the current sensor").", type: .error)
+            mutateState { $0.nextSensor?.failedAt = Date() }
+            let content = Alert.Content(
+                title: String(format: LocalizedString("Next Sensor %1$@ Failed", comment: "Alert title when the sensor paired to take over failed (1: sensor name)"), next.sensorID),
+                body: LocalizedString("The current sensor stays in use. Discard the failed sensor in the Dexcom G7 settings and pair a new one.", comment: "Alert body when the sensor paired to take over failed"),
+                acknowledgeActionButtonLabel: LocalizedString("OK", comment: "Alert acknowledgment button label"))
+            let alert = Alert(identifier: nextSensorFailedAlertIdentifier, foregroundContent: content, backgroundContent: content, trigger: .immediate)
+            delegate.notify { delegate in
+                Task { await delegate?.issueAlert(alert) }
+            }
+            return
+        }
+        guard message.hasReliableGlucose, message.glucose != nil else {
+            logDeviceCommunication("Next sensor \(next.sensorID): \(message.algorithmState); staying with \(state.sensorID ?? "the current sensor").", type: .receive)
+            return
+        }
+        logDeviceCommunication("Next sensor \(next.sensorID) has warmed up; switching to it.", type: .connection)
+        forgetSensor(reason: .replaced, nextSensorReading: message)
+    }
+
+    /// A key the next sensor's handshake produced, or nil when it refused the stored one.
+    func standbyDidChangeKey(_ sharedKey: Data?) {
+        guard state.nextSensor != nil else { return }
+        mutateState { $0.nextSensor?.sharedKey = sharedKey }
+    }
+
+    /// Makes the next sensor the session's. Its identity is known once the standby has read it;
+    /// before that the session learns it from the first reading, as after any pairing.
+    private func adoptNextSensor(_ next: G7NextSensor, reading: G7GlucoseMessage?) {
+        stopStandby()
+        let firstReading = reading.flatMap { $0.hasReliableGlucose ? $0 : nil }
+        let known = next.activatedAt != nil
+        logDeviceCommunication("Switching to the next sensor \(next.sensorID).", type: .connection)
+        retractLifecycleAlert(.sensorFailed)
+        let newState = mutateState { state in
+            state.sessionMode = .direct
+            state.pairingCode = next.pairingCode
+            state.sharedKey = next.sharedKey
+            state.peripheralIdentifier = next.peripheralIdentifier
+            state.sensorAuthenticity = next.authenticity
+            state.pairedAt = next.pairedAt
+            state.sensorID = known ? next.sensorID : nil
+            state.activatedAt = next.activatedAt
+            // the reading that triggered the switch arrives below as a new one
+            state.latestReading = firstReading == nil ? next.latestReading : nil
+            state.latestReadingTimestamp = nil
+            state.extendedVersion = nil
+            state.transmitterVersion = nil
+            state.calibration = nil
+            state.calibrationBounds = nil
+            state.calibrationBoundsDate = nil
+            state.lifecycleAlertsScheduledFor = nil
+            state.sensorFailedAlertIssuedFor = nil
+            state.sensorEndRecordedFor = nil
+            state.sensorFailureMessage = nil
+            state.sensorFailedAt = nil
+            state.lastAuthenticationFailure = nil
+            state.lastAuthenticationFailureDate = nil
+            state.simulatedSensorWarningSuppressed = false
+            state.sensorStartPendingFor = known ? next.sensorID : nil
+            state.sensorStartPendingSince = known ? Date() : nil
+            state.nextSensor = nil
+        }
+        sensor.cancelPendingCalibration()
+        sensor.dropConnection()
+        sensor.bluetoothManager.forgetPeripheral()
+        sensor.reconfigure(mode: .direct, credentials: newState.sensorCredentials)
+        sensor.activationDate = next.activatedAt
+        recordPendingSensorStart()
+        scheduleSessionTimedAlerts()
+        if let firstReading {
+            self.sensor(sensor, didRead: firstReading)
+        }
+        sensor.resumeScanning()
     }
 
     private var device: HKDevice? {
@@ -580,6 +790,12 @@ public class G7CGMManager: CGMManager {
         mutateState { $0.simulatedSensorWarningSuppressed = true }
     }
 
+    /// Record that the calibration advice has been read, so later
+    /// calibrations skip straight to the entry page.
+    public func markCalibrationAdviceSeen() {
+        mutateState { $0.calibrationAdviceSeen = true }
+    }
+
     public func logDeviceCommunication(_ message: String, type: DeviceLogEntryType = .send) {
         self.cgmManagerDelegate?.deviceManager(self, logEventForDeviceIdentifier: state.sensorID, type: type, message: message, completion: nil)
     }
@@ -602,6 +818,7 @@ extension G7CGMManager {
     /// retractions are awaited before the delegate is asked to delete us.
     public func delete() async {
         cancelSuspectedSessionEndScan()
+        stopStandby()
         // A manager passed its configuration lets go of the sensor and nothing more: the sensor's
         // lifecycle and records belong to the controller that passed it.
         if state.configuredByAnotherController {
@@ -819,7 +1036,19 @@ extension G7CGMManager {
 
 extension G7CGMManager: G7SensorDelegate {
     public func sensor(_ sensor: G7Sensor, didDiscoverNewSensor name: String, activatedAt: Date, peripheralIdentifier: UUID) -> Bool {
+        // A failed or ended sensor keeps advertising, and the scan for its replacement finds it again.
+        if let previous = state.previousSensor, previous.endReason.isFinal, previous.sensorID == name,
+           let previousActivation = previous.activatedAt, abs(previousActivation.timeIntervalSince(activatedAt)) < .minutes(1) {
+            logDeviceCommunication("Ignoring \(name): its session already ended (\(previous.endReason.rawValue))", type: .connection)
+            return false
+        }
+
         logDeviceCommunication("New sensor \(name) discovered, activated at \(activatedAt)", type: .connection)
+
+        if let failedSensor = state.sensorFailedAlertIssuedFor, failedSensor != name {
+            retractLifecycleAlert(.sensorFailed)
+            mutateState { $0.sensorFailedAlertIssuedFor = nil }
+        }
 
         let shouldSwitchToNewSensor = true
         // While eavesdropping, a held code was for another controller, and it belonged to the sensor
@@ -1259,14 +1488,15 @@ extension G7CGMManager: G7SensorDelegate {
             return
         }
 
+        // Moved to the next sensor: this message is the old one's last word.
         if message.algorithmState.sensorFailed {
             logDeviceCommunication("Detected failed sensor... scanning for new sensor.", type: .receive)
-            scanForNewSensor()
+            if forgetSensor(reason: .failed) { return }
         }
 
         if message.algorithmState == .known(.sessionEnded) {
             logDeviceCommunication("Detected session ended... scanning for new sensor.", type: .receive)
-            scanForNewSensor()
+            if forgetSensor(reason: .sessionEnded) { return }
         }
 
 
@@ -1455,4 +1685,44 @@ extension G7CGMManager: DeviceConfigurationSharing {
     /// The user's Read on Apple Watch setting.
     public var isConfigurationSharingEnabled: Bool { isWatchDirectReadEnabled }
 
+}
+
+/// The standby session's delegate: its readings decide the switch, everything else goes to the
+/// device log. The session's own records (alerts, events, glucose) stay with the current sensor.
+final class G7StandbyListener: G7SensorDelegate {
+    private weak var manager: G7CGMManager?
+
+    init(manager: G7CGMManager) {
+        self.manager = manager
+    }
+
+    private func log(_ line: String, type: DeviceLogEntryType = .connection) {
+        manager?.logDeviceCommunication("[next sensor] " + line, type: type)
+    }
+
+    func sensor(_ sensor: G7Sensor, didRead glucose: G7GlucoseMessage) {
+        manager?.standby(sensor, didRead: glucose)
+    }
+
+    func sensor(_ sensor: G7Sensor, didAuthenticateWith sharedKey: Data, deviceName: String?, authenticity: G7SensorAuthenticity) {
+        manager?.standbyDidChangeKey(sharedKey)
+    }
+
+    func sensorDidInvalidateSharedKey(_ sensor: G7Sensor) {
+        manager?.standbyDidChangeKey(nil)
+    }
+
+    func sensor(_ sensor: G7Sensor, didDiscoverNewSensor name: String, activatedAt: Date, peripheralIdentifier: UUID) -> Bool { true }
+    func sensorDidConnect(_ sensor: G7Sensor, name: String) { log("Connected to \(name)") }
+    func sensor(_ sensor: G7Sensor, didError error: Error) { log("Error \(error)", type: .error) }
+    func sensor(_ sensor: G7Sensor, log message: String, type: DeviceLogEntryType) { log(message, type: type) }
+    func sensorDisconnected(_ sensor: G7Sensor, suspectedEndOfSession: Bool) {}
+    func sensor(_ sensor: G7Sensor, logComms comms: String) {}
+    func sensor(_ sensor: G7Sensor, didReadBackfill backfill: [G7BackfillMessage]) {}
+    func sensor(_ sensor: G7Sensor, didReceive extendedVersion: ExtendedVersionMessage) {}
+    func sensor(_ sensor: G7Sensor, didReceive transmitterVersion: TransmitterVersionMessage) {}
+    func sensor(_ sensor: G7Sensor, didReceiveCalibrationResponse response: G7CalibrateRxMessage) {}
+    func sensor(_ sensor: G7Sensor, didDiscardStaleCalibrationEnteredAt date: Date) {}
+    func sensor(_ sensor: G7Sensor, didReadCalibrationBounds bounds: G7CalibrationBoundsMessage) {}
+    func sensorConnectionStatusDidUpdate(_ sensor: G7Sensor) {}
 }

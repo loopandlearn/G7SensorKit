@@ -247,7 +247,17 @@ class G7BluetoothManager: NSObject {
     /// the restore identifier, and sharing the central is what lets the
     /// session adopt the connection pairing just authenticated instead of
     /// dropping it and waiting for the sensor's next advertisement.
-    override init() {
+    /// The state-restoration identifier, one per central: the session's, or the standby's that
+    /// follows a next sensor alongside it.
+    let restoreIdentifier: String
+    static let sessionRestoreIdentifier = "com.loudnate.CGMBLEKit"
+
+    override convenience init() {
+        self.init(restoreIdentifier: G7BluetoothManager.sessionRestoreIdentifier)
+    }
+
+    init(restoreIdentifier: String) {
+        self.restoreIdentifier = restoreIdentifier
         super.init()
 
         managerQueue.sync {
@@ -264,7 +274,7 @@ class G7BluetoothManager: NSObject {
     /// restoration option, which raises an exception outside an app with the
     /// bluetooth-central background mode.
     func makeCentralManager(queue: DispatchQueue) -> CBCentralManager {
-        return CBCentralManager(delegate: self, queue: queue, options: [CBCentralManagerOptionRestoreIdentifierKey: "com.loudnate.CGMBLEKit"])
+        return CBCentralManager(delegate: self, queue: queue, options: [CBCentralManagerOptionRestoreIdentifierKey: restoreIdentifier])
     }
 
     // MARK: - Actions

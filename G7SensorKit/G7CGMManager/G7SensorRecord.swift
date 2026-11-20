@@ -38,6 +38,15 @@ public struct G7SensorRecord: RawRepresentable, Equatable {
     public enum EndReason: String {
         case replaced
         case deleted
+        case failed
+        case sessionEnded
+        /// The user stopped it.
+        case stopped
+
+        /// The sensor can't be used again, so finding it in a later scan isn't a reason to adopt it.
+        public var isFinal: Bool {
+            self == .failed || self == .sessionEnded || self == .stopped
+        }
     }
 
     public var model: G7SensorModel? {

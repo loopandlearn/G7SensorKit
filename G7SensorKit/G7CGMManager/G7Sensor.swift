@@ -211,7 +211,8 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
     /// `G7BluetoothManager.init`.
     let bluetoothManager: G7BluetoothManager
 
-    private let delegateQueue = DispatchQueue(label: "com.loopkit.G7Sensor.delegateQueue", qos: .unspecified)
+    /// Shared with a standby session, so its callbacks and this one's never interleave.
+    let delegateQueue: DispatchQueue
 
     private let lockedCredentials: Locked<G7SensorCredentials>
 
@@ -231,7 +232,8 @@ public final class G7Sensor: G7BluetoothManagerDelegate {
         self.init(mode: mode, credentials: credentials, bluetoothManager: G7BluetoothManager(), displayType: displayType)
     }
 
-    init(mode: G7SessionMode, credentials: G7SensorCredentials, bluetoothManager: G7BluetoothManager, displayType: G7DisplayType = .phone) {
+    init(mode: G7SessionMode, credentials: G7SensorCredentials, bluetoothManager: G7BluetoothManager, displayType: G7DisplayType = .phone, delegateQueue: DispatchQueue? = nil) {
+        self.delegateQueue = delegateQueue ?? DispatchQueue(label: "com.loopkit.G7Sensor.delegateQueue", qos: .unspecified)
         self.mode = mode
         self.displayType = displayType
         self.lockedCredentials = Locked(credentials)

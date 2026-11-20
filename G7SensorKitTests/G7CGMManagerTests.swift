@@ -222,6 +222,54 @@ final class G7CGMManagerTests: XCTestCase {
         XCTAssertEqual(identifier, manager.state.peripheralIdentifier)
     }
 
+    // MARK: - Next sensor
+
+    /// A sensor paired while the current one reads waits beside it; its first reliable reading
+    /// switches the session over, with the old sensor kept as the previous one.
+    func testNextSensorTakesOverOnceItReadsReliably() throws {
+        let manager = makeManager(gracePeriod: 60)
+        manager.makeStandbyBluetoothManager = { TestBluetoothManager() }
+        let nextIdentifier = UUID()
+
+        manager.applyPairingResult(pairingCode: "1234", peripheralIdentifier: nextIdentifier, sharedKey: Data([1, 2]), sensorName: "DXCM42")
+
+        XCTAssertEqual(Self.sensorID, manager.state.sensorID)
+        XCTAssertEqual("DXCM42", manager.state.nextSensor?.sensorID)
+        XCTAssertEqual(manager.state.nextSensor, G7CGMManagerState(rawValue: manager.state.rawValue).nextSensor)
+
+        let standby = try XCTUnwrap(manager.standbySensor)
+        standby.activationDate = Date(timeIntervalSinceNow: -3600)
+        manager.standby(standby, didRead: okGlucoseMessage)
+
+        XCTAssertEqual("DXCM42", manager.state.sensorID)
+        XCTAssertEqual(nextIdentifier, manager.state.peripheralIdentifier)
+        XCTAssertEqual(.direct, manager.state.sessionMode)
+        XCTAssertEqual(okGlucoseMessage, manager.state.latestReading)
+        XCTAssertNil(manager.state.nextSensor)
+        XCTAssertNil(manager.standbySensor)
+        XCTAssertEqual(Self.sensorID, manager.state.previousSensor?.sensorID)
+    }
+
+    /// Either sensor can be let go of on its own: discarding the next keeps the current; stopping
+    /// the current hands over to the next at once, warmed up or not.
+    func testEitherSensorCanBeStoppedOnItsOwn() {
+        let manager = makeManager(gracePeriod: 60)
+        manager.makeStandbyBluetoothManager = { TestBluetoothManager() }
+        manager.applyPairingResult(pairingCode: "1234", peripheralIdentifier: UUID(), sharedKey: nil, sensorName: "DXCM42")
+
+        manager.discardNextSensor()
+        XCTAssertNil(manager.state.nextSensor)
+        XCTAssertNil(manager.standbySensor)
+        XCTAssertEqual(Self.sensorID, manager.state.sensorID)
+
+        manager.applyPairingResult(pairingCode: "5678", peripheralIdentifier: UUID(), sharedKey: nil, sensorName: "DXCM43")
+        manager.stopCurrentSensor()
+        XCTAssertNil(manager.state.nextSensor)
+        XCTAssertEqual("5678", manager.state.pairingCode)
+        XCTAssertEqual(.stopped, manager.state.previousSensor?.endReason)
+        XCTAssertEqual(Self.sensorID, manager.state.previousSensor?.sensorID)
+    }
+
     // MARK: - Resuming
 
     /// A session relaunched by Bluetooth state restoration knows its peripheral
