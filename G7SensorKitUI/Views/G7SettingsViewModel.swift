@@ -31,6 +31,7 @@ class G7SettingsViewModel: ObservableObject {
     @Published private(set) var title: String = ""
     @Published private(set) var pairedAt: Date?
     @Published private(set) var previousSensor: G7SensorRecord?
+    @Published private(set) var nextSensor: G7NextSensor?
     @Published private(set) var lastGlucoseTrend: GlucoseTrend?
     @Published private(set) var sensorEndsAt: Date?
     @Published private(set) var sensorModel: G7SensorModel = .g7
@@ -125,6 +126,7 @@ class G7SettingsViewModel: ObservableObject {
         title = cgmManager.localizedTitle
         pairedAt = cgmManager.state.pairedAt
         previousSensor = cgmManager.state.previousSensor
+        nextSensor = cgmManager.state.nextSensor
         lastGlucoseTrend = cgmManager.latestReading?.hasReliableGlucose == true ? cgmManager.latestReading?.trendType : nil
         sensorEndsAt = cgmManager.sensorEndsAt
         sensorModel = cgmManager.sensorModel
@@ -355,6 +357,14 @@ class G7SettingsViewModel: ObservableObject {
     func switchToDexcomAppMode() {
         cgmManager.switchToDexcomAppMode()
         updateValues()
+    }
+
+    func stopCurrentSensor() {
+        cgmManager.stopCurrentSensor()
+    }
+
+    func discardNextSensor() {
+        cgmManager.discardNextSensor()
     }
 
     func scanForNewSensor() {
