@@ -129,6 +129,8 @@ struct G7PreviousSensorView: View {
             return LocalizedString("Failed", comment: "Row label for when the previous sensor failed")
         case .sessionEnded:
             return LocalizedString("Session Ended", comment: "Row label for when the previous sensor's session ended")
+        case .stopped:
+            return LocalizedString("Stopped", comment: "Row label for when the user stopped the previous sensor")
         }
     }
 }
